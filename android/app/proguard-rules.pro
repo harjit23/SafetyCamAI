@@ -9,3 +9,9 @@
 
 # Add any project specific keep options here:
 
+# Keep Parcelize annotation and annotated classes
+-keepattributes Annotation
+-keep @kotlinx.parcelize.Parcelize class * { *; }
+-keep class kotlinx.parcelize.** { *; }
+-dontwarn kotlinx.parcelize.Parcelize
+
