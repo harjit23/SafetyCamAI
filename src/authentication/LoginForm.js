@@ -1,4 +1,4 @@
-import { useLoader } from '../context/LoaderContext';
+// src/authentication/LoginForm.js
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -7,16 +7,18 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  Linking
 } from 'react-native';
 import { jwtDecode } from 'jwt-decode';
-
 import { useMutation } from '@apollo/client';
-import { LOGIN_MUTATION } from '../graphql/mutations';
-import { useAuth } from '../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 import Icon from 'react-native-vector-icons/FontAwesome';
+
+import { useLoader } from '../context/LoaderContext';
+import { useAuth } from '../context/AuthContext';
+import { LOGIN_MUTATION } from '../graphql/mutations';
 
 export default function LoginForm({ switchTo }) {
   const { showLoader, hideLoader } = useLoader();
@@ -34,10 +36,9 @@ export default function LoginForm({ switchTo }) {
   // --- validation helpers ---
   const isEmailValid = useMemo(
     () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()),
-    [email]
+    [email],
   );
 
-  // one combined rule (matches your screenshot copy)
   const isStrongPassword = useMemo(() => {
     const s = password || '';
     const longEnough = s.length >= 8;
@@ -65,6 +66,7 @@ export default function LoginForm({ switchTo }) {
 
     try {
       showLoader('Logging in...');
+
       const { data } = await login({ variables: { email, password } });
       const loginRes = data?.login;
 
@@ -99,22 +101,14 @@ export default function LoginForm({ switchTo }) {
       await AsyncStorage.setItem('accessToken', token);
       await AsyncStorage.setItem('refreshToken', refreshToken);
 
-      // decode user id (same as you used in HistoryScreen)
-      let userId = null;
+      // decode user id
       try {
         const decoded = jwtDecode(token);
-        userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+        const userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+        if (userId) {
+          await AsyncStorage.setItem('currentUserId', String(userId));
+        }
       } catch (_) {}
-
-      if (!userId) {
-        Toast.show({
-          type: 'error',
-          text1: 'Login Failed',
-          text2: 'Could not determine user id from token.',
-        });
-        return;
-      }
-      await AsyncStorage.setItem('currentUserId', String(userId));
 
       Toast.show({
         type: 'success',
@@ -125,12 +119,38 @@ export default function LoginForm({ switchTo }) {
       setUser(loginRes);
       navigation.navigate('Home');
     } catch (err) {
+      // 🔐 MFA handling (mirror Vue)
+      const msg = err?.graphQLErrors?.[0]?.message || err?.message || '';
+      if (msg) {
+        const graphErrs = msg.split(':') || [];
+        const reason = (graphErrs[0] || '').trim();           // e.g. "MFA_REQUIRED"
+        const tokenFromError = (graphErrs[1] || '').trim();   // the long JWT
+
+        if (tokenFromError) {
+          // Vue: auth.setItem(graphErrs[1], constants.mfaToken)
+          // RN: key = 'mfaToken', value = token
+          await AsyncStorage.setItem('mfaToken', tokenFromError);
+          console.log('[Login] stored mfaToken:', tokenFromError);
+        }
+
+        if (reason.includes('MFA_REQUIRED')) {
+          // show MFA component in AuthScreen
+          switchTo && switchTo('mfa');
+          hideLoader();
+          return;
+        }
+      }
+
       const backendMessage =
         err?.graphQLErrors?.[0]?.message ||
         err?.networkError?.result?.errors?.[0]?.message ||
         err?.message ||
         'Login failed.';
-      Toast.show({ type: 'error', text1: 'Login Failed', text2: backendMessage });
+      Toast.show({
+        type: 'error',
+        text1: 'Login Failed',
+        text2: backendMessage,
+      });
     } finally {
       hideLoader();
     }
@@ -178,7 +198,6 @@ export default function LoginForm({ switchTo }) {
         </TouchableOpacity>
       </View>
 
-      {/* Single red helper text like your screenshot */}
       {(passwordFocused || submitted) && !isStrongPassword && (
         <Text style={styles.passwordError}>
           Enter a Strong Password (Min. 8 characters) which contains at least one
@@ -192,7 +211,10 @@ export default function LoginForm({ switchTo }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.loginButton, !canSubmit && styles.loginButtonDisabled]}
+          style={[
+            styles.loginButton,
+            !canSubmit && styles.loginButtonDisabled,
+          ]}
           onPress={handleLogin}
           disabled={!canSubmit}
         >
@@ -210,7 +232,21 @@ export default function LoginForm({ switchTo }) {
           <Text style={styles.link}>Register</Text>
         </TouchableOpacity>
       </View>
+
+      <View style={{ marginTop: 20, paddingHorizontal: 10 }}>
+  <Text style={{ color: '#444', fontSize: 12, textAlign: 'center' }}>
+    Note: To enable Two-Factor Authentication (2FA), please sign in to the
+    SafetyCam AI Web Panel at{' '}
+    <Text
+      style={{ color: '#0C66E4', textDecorationLine: 'underline' }}
+      onPress={() => Linking.openURL('https://app.safetycamai.com/')}
+    >
+      app.safetycamai.com
+    </Text>.
+  </Text>
+</View>
     </View>
+    
   );
 }
 
@@ -272,7 +308,6 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
   },
-  // single red helper line (screenshot style)
   passwordError: {
     marginTop: 6,
     fontSize: 12,
@@ -315,13 +350,8 @@ const styles = StyleSheet.create({
 
 
 
-
-
-
-
-
 // import { useLoader } from '../context/LoaderContext';
-// import React, { useState } from 'react';
+// import React, { useMemo, useState } from 'react';
 // import {
 //   View,
 //   Text,
@@ -330,10 +360,10 @@ const styles = StyleSheet.create({
 //   TouchableOpacity,
 //   Image,
 // } from 'react-native';
-// import { jwtDecode } from 'jwt-decode';
+// import  jwtDecode  from 'jwt-decode';
 
 // import { useMutation } from '@apollo/client';
-// import { LOGIN_MUTATION } from '../graphql/mutations'; // keep your mutation where you already have it
+// import { LOGIN_MUTATION } from '../graphql/mutations';
 // import { useAuth } from '../context/AuthContext';
 // import AsyncStorage from '@react-native-async-storage/async-storage';
 // import { useNavigation } from '@react-navigation/native';
@@ -348,71 +378,184 @@ const styles = StyleSheet.create({
 //   const [email, setEmail] = useState('');
 //   const [password, setPassword] = useState('');
 //   const [showPassword, setShowPassword] = useState(false);
+//   const [passwordFocused, setPasswordFocused] = useState(false);
+//   const [submitted, setSubmitted] = useState(false);
 
 //   const [login] = useMutation(LOGIN_MUTATION);
 
-//   const handleLogin = async () => {
-//     try {
-//       showLoader('Logging in...');
+//   // --- validation helpers ---
+//   const isEmailValid = useMemo(
+//     () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()),
+//     [email]
+//   );
 
-//       // 1) Login
-//       const { data } = await login({ variables: { email, password } });
-//       const loginRes = data?.login;
+//   // one combined rule (matches your screenshot copy)
+//   const isStrongPassword = useMemo(() => {
+//     const s = password || '';
+//     const longEnough = s.length >= 8;
+//     const hasUpper = /[A-Z]/.test(s);
+//     const hasLower = /[a-z]/.test(s);
+//     const hasNumber = /\d/.test(s);
+//     const hasSymbol = /[@$!%*?&#_\/\-]/.test(s);
+//     return longEnough && hasUpper && hasLower && hasNumber && hasSymbol;
+//   }, [password]);
 
-//       if (!loginRes) {
-//         Toast.show({ type: 'error', text1: 'Login Failed', text2: 'No user data returned from server.' });
-//         return;
-//       }
+//   const canSubmit = isEmailValid && isStrongPassword;
 
-//       if (!loginRes.isEmailVerified) {
-//         Toast.show({
-//           type: 'error',
-//           text1: 'Email Not Verified',
-//           text2: 'Please verify your email before logging in.',
-//         });
-//         return;
-//       }
+//   // const handleLogin = async () => {
+//   //   setSubmitted(true);
+//   //   if (!canSubmit) {
+//   //     Toast.show({
+//   //       type: 'error',
+//   //       text1: 'Fix the highlighted fields',
+//   //       text2: !isEmailValid
+//   //         ? 'Enter a valid email address.'
+//   //         : 'Please use a stronger password.',
+//   //     });
+//   //     return;
+//   //   }
 
-//       // 2) Store tokens
-//       const { token, refreshToken } = loginRes.token || {};
-//       if (!token || !refreshToken) {
-//         Toast.show({ type: 'error', text1: 'Login Failed', text2: 'Invalid token payload.' });
-//         return;
-//       }
-//       await AsyncStorage.setItem('accessToken', token);
-//       await AsyncStorage.setItem('refreshToken', refreshToken);
+//   //   try {
+//   //     showLoader('Logging in...');
+//   //     const { data } = await login({ variables: { email, password } });
+//   //     const loginRes = data?.login;
 
-//       // 3) Decode JWT to get userId (use SAME claim as in HistoryScreen)
-//       let userId = null;
+//   //     if (!loginRes) {
+//   //       Toast.show({
+//   //         type: 'error',
+//   //         text1: 'Login Failed',
+//   //         text2: 'No user data returned from server.',
+//   //       });
+//   //       return;
+//   //     }
+
+//   //     if (!loginRes.isEmailVerified) {
+//   //       Toast.show({
+//   //         type: 'error',
+//   //         text1: 'Email Not Verified',
+//   //         text2: 'Please verify your email before logging in.',
+//   //       });
+//   //       return;
+//   //     }
+
+//   //     const { token, refreshToken } = loginRes.token || {};
+//   //     if (!token || !refreshToken) {
+//   //       Toast.show({
+//   //         type: 'error',
+//   //         text1: 'Login Failed',
+//   //         text2: 'Invalid token payload.',
+//   //       });
+//   //       return;
+//   //     }
+
+//   //     await AsyncStorage.setItem('accessToken', token);
+//   //     await AsyncStorage.setItem('refreshToken', refreshToken);
+
+//   //     // decode user id (same as you used in HistoryScreen)
+//   //     let userId = null;
+//   //     try {
+//   //       const decoded = jwtDecode(token);
+//   //       userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+//   //     } catch (_) {}
+
+//   //     if (!userId) {
+//   //       Toast.show({
+//   //         type: 'error',
+//   //         text1: 'Login Failed',
+//   //         text2: 'Could not determine user id from token.',
+//   //       });
+//   //       return;
+//   //     }
+//   //     await AsyncStorage.setItem('currentUserId', String(userId));
+
+//   //     Toast.show({
+//   //       type: 'success',
+//   //       text1: 'Login Successful',
+//   //       text2: 'Welcome back!',
+//   //     });
+
+//   //     setUser(loginRes);
+//   //     navigation.navigate('Home');
+//   //   } catch (err) {
+//   //     const backendMessage =
+//   //       err?.graphQLErrors?.[0]?.message ||
+//   //       err?.networkError?.result?.errors?.[0]?.message ||
+//   //       err?.message ||
+//   //       'Login failed.';
+//   //     Toast.show({ type: 'error', text1: 'Login Failed', text2: backendMessage });
+//   //   } finally {
+//   //     hideLoader();
+//   //   }
+//   // };
+// // src/authentication/LoginForm.js  (only replace handleLogin)
+// const handleLogin = async () => {
+//   setSubmitted(true);
+//   if (!canSubmit) {
+//     Toast.show({
+//       type: 'error',
+//       text1: 'Fix the highlighted fields',
+//       text2: !isEmailValid
+//         ? 'Enter a valid email address.'
+//         : 'Please use a stronger password.',
+//     });
+//     return;
+//   }
+
+//   try {
+//     showLoader('Logging in...');
+//     const { data } = await login({ variables: { email, password } });
+//     const loginRes = data?.login;
+
+//     // Normal login: server returned tokens
+//     if (loginRes?.token?.token && loginRes?.token?.refreshToken) {
+//       await AsyncStorage.setItem('accessToken', loginRes.token.token);
+//       await AsyncStorage.setItem('refreshToken', loginRes.token.refreshToken);
+
+//       // decode + store currentUserId if available in token
 //       try {
-//         const decoded = jwtDecode(token);
-//         userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+//         const decoded = jwtDecode(loginRes.token.token);
+//         const userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+//         if (userId) await AsyncStorage.setItem('currentUserId', String(userId));
 //       } catch (_) {}
 
-//       if (!userId) {
-//         Toast.show({ type: 'error', text1: 'Login Failed', text2: 'Could not determine user id from token.' });
-//         return;
-//       }
-
-//       // 4) Persist userId for later (HomeScreen will fetch the API key when needed)
-//       await AsyncStorage.setItem('currentUserId', String(userId));
-
 //       Toast.show({ type: 'success', text1: 'Login Successful', text2: 'Welcome back!' });
-
-//       // 5) Update auth context and navigate
 //       setUser(loginRes);
 //       navigation.navigate('Home');
-//     } catch (err) {
-//       const backendMessage =
-//         err?.graphQLErrors?.[0]?.message ||
-//         err?.networkError?.result?.errors?.[0]?.message ||
-//         err?.message ||
-//         'Login failed.';
-//       Toast.show({ type: 'error', text1: 'Login Failed', text2: backendMessage });
-//     } finally {
-//       hideLoader();
+//       return;
 //     }
-//   };
+
+//     // Fallback when loginRes returned but did not contain tokens
+//     Toast.show({ type: 'error', text1: 'Login Failed', text2: 'Invalid server response.' });
+//   } catch (err) {
+//     // The backend signals MFA via an error message: "MFA_REQUIRED : <token>"
+//     // in LoginForm catch block
+//   const gqlMsg = err?.graphQLErrors?.[0]?.message || err?.message || '';
+
+//   if (typeof gqlMsg === 'string' && gqlMsg.startsWith('MFA_REQUIRED')) {
+//     // extract token after the colon
+//     const parts = gqlMsg.split(':');
+//     const mfaToken = parts.slice(1).join(':').trim();
+//     if (mfaToken) {
+//       await AsyncStorage.setItem('mfaToken', mfaToken);
+//       // show the MFA UI inside AuthScreen (you use switchTo currently)
+//       switchTo && switchTo('mfa');
+//       hideLoader();
+//       return;
+//     }
+//   }
+
+
+
+//     const backendMessage =
+//       err?.graphQLErrors?.[0]?.message ||
+//       err?.networkError?.result?.errors?.[0]?.message ||
+//       err?.message ||
+//       'Login failed.';
+//     Toast.show({ type: 'error', text1: 'Login Failed', text2: backendMessage });
+//   } finally {
+//     hideLoader();
+//   }
+// };
 
 //   return (
 //     <View style={styles.form}>
@@ -420,14 +563,18 @@ const styles = StyleSheet.create({
 
 //       <Text style={styles.label}>Email *</Text>
 //       <TextInput
-//         style={styles.input}
+//         style={[styles.input, submitted && !isEmailValid && styles.inputError]}
 //         placeholder="Enter your email"
 //         placeholderTextColor="#888"
 //         value={email}
 //         onChangeText={setEmail}
 //         keyboardType="email-address"
 //         autoCapitalize="none"
+//         autoComplete="email"
 //       />
+//       {submitted && !isEmailValid && (
+//         <Text style={styles.errorText}>Please enter a valid email address.</Text>
+//       )}
 
 //       <Text style={styles.label}>Password *</Text>
 //       <View style={styles.passwordContainer}>
@@ -438,6 +585,9 @@ const styles = StyleSheet.create({
 //           value={password}
 //           onChangeText={setPassword}
 //           secureTextEntry={!showPassword}
+//           onFocus={() => setPasswordFocused(true)}
+//           onBlur={() => setPasswordFocused(false)}
+//           autoComplete="password"
 //         />
 //         <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
 //           <Icon
@@ -449,12 +599,24 @@ const styles = StyleSheet.create({
 //         </TouchableOpacity>
 //       </View>
 
+//       {/* Single red helper text like your screenshot */}
+//       {(passwordFocused || submitted) && !isStrongPassword && (
+//         <Text style={styles.passwordError}>
+//           Enter a Strong Password (Min. 8 characters) which contains at least one
+//           uppercase & lowercase alphabet, numeric and symbols (@$!%*?&#)
+//         </Text>
+//       )}
+
 //       <View style={styles.actions}>
 //         <TouchableOpacity onPress={() => switchTo('forgot')}>
 //           <Text style={styles.link}>Forgot password?</Text>
 //         </TouchableOpacity>
 
-//         <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+//         <TouchableOpacity
+//           style={[styles.loginButton, !canSubmit && styles.loginButtonDisabled]}
+//           onPress={handleLogin}
+//           disabled={!canSubmit}
+//         >
 //           <Text style={styles.loginText}>Login</Text>
 //           <Image
 //             source={require('../assets/Forward-Icon.png')}
@@ -501,6 +663,14 @@ const styles = StyleSheet.create({
 //     color: '#000',
 //     backgroundColor: '#fff',
 //   },
+//   inputError: {
+//     borderColor: '#dc2626',
+//   },
+//   errorText: {
+//     marginTop: 6,
+//     fontSize: 12,
+//     color: '#dc2626',
+//   },
 //   passwordContainer: {
 //     flexDirection: 'row',
 //     alignItems: 'center',
@@ -523,6 +693,13 @@ const styles = StyleSheet.create({
 //     width: 20,
 //     height: 20,
 //   },
+//   // single red helper line (screenshot style)
+//   passwordError: {
+//     marginTop: 6,
+//     fontSize: 12,
+//     color: '#dc2626',
+//     lineHeight: 18,
+//   },
 //   actions: {
 //     flexDirection: 'row',
 //     justifyContent: 'space-between',
@@ -536,6 +713,9 @@ const styles = StyleSheet.create({
 //     paddingVertical: 8,
 //     paddingHorizontal: 12,
 //     borderRadius: 6,
+//   },
+//   loginButtonDisabled: {
+//     opacity: 0.6,
 //   },
 //   loginText: {
 //     color: '#fff',
@@ -560,238 +740,3 @@ const styles = StyleSheet.create({
 
 
 
-// import { useLoader } from '../context/LoaderContext';
-// import React, { useState } from 'react';
-// import {
-//   View,
-//   Text,
-//   TextInput,
-//   StyleSheet,
-//   TouchableOpacity,
-//   Image,
-// } from 'react-native';
-// import { useMutation, useLazyQuery } from '@apollo/client';
-// import { LOGIN_MUTATION, GET_API_KEY } from '../graphql/mutations';
-// import { useAuth } from '../context/AuthContext';
-// import AsyncStorage from '@react-native-async-storage/async-storage';
-// import { useNavigation } from '@react-navigation/native';
-// import Toast from 'react-native-toast-message';
-// import Icon from 'react-native-vector-icons/FontAwesome';
-
-// export default function LoginForm({ switchTo }) {
-//   const { showLoader, hideLoader } = useLoader();
-//   const navigation = useNavigation();
-//   const { setUser } = useAuth();
-
-//   const [email, setEmail] = useState('');
-//   const [password, setPassword] = useState('');
-//   const [showPassword, setShowPassword] = useState(false);
-
-//   const [login] = useMutation(LOGIN_MUTATION);
-//   const [getApiKey] = useLazyQuery(GET_API_KEY);
-
-//   const handleLogin = async () => {
-//     try {
-//       showLoader('Logging in...');
-//       const { data } = await login({ variables: { email, password } });
-//       const user = data?.login;
-//       hideLoader();
-
-//       if (!user) {
-//         Toast.show({
-//           type: 'error',
-//           text1: 'Login Failed',
-//           text2: 'No user data returned from server.',
-//         });
-//         return;
-//       }
-
-//       if (!user.isEmailVerified) {
-//         Toast.show({
-//           type: 'error',
-//           text1: 'Email Not Verified',
-//           text2: 'Please verify your email before logging in.',
-//         });
-//         return;
-//       }
-
-//       const { token, refreshToken } = user.token;
-//       await AsyncStorage.setItem('accessToken', token);
-//       await AsyncStorage.setItem('refreshToken', refreshToken);
-
-//       const apiKeyRes = await getApiKey();
-//       const apiKey = apiKeyRes?.data?.apiKeys?.items?.[0]?.secret || null;
-
-//       if (!apiKey) {
-//         Toast.show({
-//           type: 'error',
-//           text1: 'API Key Error',
-//           text2: 'Unable to fetch API key.',
-//         });
-//         return;
-//       }
-
-//       await AsyncStorage.setItem('apiKey', apiKey);
-
-//       Toast.show({
-//         type: 'success',
-//         text1: 'Login Successful',
-//         text2: 'Welcome back!',
-//       });
-
-//       setUser(user);
-//       navigation.navigate('Home');
-//     } catch (err) {
-//       hideLoader();
-//       const backendMessage =
-//         err?.graphQLErrors?.[0]?.message ||
-//         err?.networkError?.result?.errors?.[0]?.message ||
-//         err?.message ||
-//         'Login failed.';
-
-//       Toast.show({
-//         type: 'error',
-//         text1: 'Login Failed',
-//         text2: backendMessage,
-//       });
-//     }
-//   };
-
-//   return (
-//     <View style={styles.form}>
-//       <Text style={styles.heading}>Login</Text>
-
-//       <Text style={styles.label}>Email *</Text>
-//       <TextInput
-//         style={styles.input}
-//         placeholder="Enter your email"
-//         placeholderTextColor="#888"
-//         value={email}
-//         onChangeText={setEmail}
-//         keyboardType="email-address"
-//         autoCapitalize="none"
-//       />
-
-//       <Text style={styles.label}>Password *</Text>
-//       <View style={styles.passwordContainer}>
-//         <TextInput
-//           style={styles.passwordInput}
-//           placeholder="Enter your password"
-//           placeholderTextColor="#888"
-//           value={password}
-//           onChangeText={setPassword}
-//           secureTextEntry={!showPassword}
-//         />
-//         <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-//           <Icon
-//             name={showPassword ? 'eye' : 'eye-slash'}
-//             size={20}
-//             color="#666"
-//             style={styles.icon}
-//           />
-//         </TouchableOpacity>
-//       </View>
-
-//       <View style={styles.actions}>
-//         <TouchableOpacity onPress={() => switchTo('forgot')}>
-//           <Text style={styles.link}>Forgot password?</Text>
-//         </TouchableOpacity>
-
-//         <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-//           <Text style={styles.loginText}>Login</Text>
-//           <Image
-//             source={require('../assets/Forward-Icon.png')}
-//             style={styles.iconImage}
-//           />
-//         </TouchableOpacity>
-//       </View>
-
-//       <View style={styles.registerText}>
-//         <Text style={{ color: '#000' }}>Don't have an account? </Text>
-//         <TouchableOpacity onPress={() => switchTo('register')}>
-//           <Text style={styles.link}>Register</Text>
-//         </TouchableOpacity>
-//       </View>
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   form: {
-//     borderRadius: 10,
-//     padding: 20,
-//     alignSelf: 'center',
-//     width: '100%',
-//     maxWidth: 360,
-//   },
-//   heading: {
-//     fontSize: 22,
-//     fontWeight: '600',
-//     marginBottom: 16,
-//     color: '#000',
-//   },
-//   label: {
-//     fontWeight: '500',
-//     marginTop: 10,
-//     color: '#000',
-//   },
-//   input: {
-//     borderWidth: 1,
-//     borderColor: '#ccc',
-//     borderRadius: 6,
-//     padding: 10,
-//     marginTop: 4,
-//     color: '#000',
-//     backgroundColor: '#fff',
-//   },
-//   passwordContainer: {
-//     flexDirection: 'row',
-//     alignItems: 'center',
-//     backgroundColor: '#fff',
-//     borderColor: '#ccc',
-//     borderWidth: 1,
-//     borderRadius: 6,
-//     paddingRight: 8,
-//     marginTop: 4,
-//   },
-//   passwordInput: {
-//     flex: 1,
-//     padding: 10,
-//     color: '#000',
-//   },
-//   icon: {
-//     paddingHorizontal: 8,
-//   },
-//   iconImage: {
-//     width: 20,
-//     height: 20,
-//   },
-//   actions: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//     marginTop: 16,
-//   },
-//   loginButton: {
-//     backgroundColor: '#0C66E4',
-//     flexDirection: 'row',
-//     alignItems: 'center',
-//     paddingVertical: 8,
-//     paddingHorizontal: 12,
-//     borderRadius: 6,
-//   },
-//   loginText: {
-//     color: '#fff',
-//     fontWeight: '600',
-//     marginRight: 6,
-//   },
-//   registerText: {
-//     marginTop: 24,
-//     flexDirection: 'row',
-//     justifyContent: 'center',
-//   },
-//   link: {
-//     color: '#0C66E4',
-//     fontWeight: '500',
-//   },
-// });
