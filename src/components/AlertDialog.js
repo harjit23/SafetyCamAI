@@ -43,7 +43,7 @@ const AlertDialog = () => {
 
               <View style={styles.actions}>
                 <TouchableOpacity style={styles.upgradeButton} onPress={upgradeNow}>
-                  <Text style={styles.upgradeText}>Upgrade Now</Text>
+                  <Text style={styles.upgradeText}>Manage Account</Text>
                 </TouchableOpacity>
                 {/* <TouchableOpacity style={styles.learnMoreButton} onPress={closeAlert}>
                   <Text style={styles.learnMoreText}>Learn More</Text>
