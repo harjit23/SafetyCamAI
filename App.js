@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import {
   NavigationContainer,
-  getStateFromPath,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Toast from 'react-native-toast-message';
@@ -27,7 +26,13 @@ const linking = {
   config: {
     screens: {
       Home: 'home',
-      AuthLogin: 'auth/login',
+      AuthLogin: {
+        path: 'auth/login',
+        parse: {
+          code: String,
+          provider: String,
+        },
+      },
       AuthRegister: 'auth/register',
       AuthReset: {
         path: 'auth/reset-password',
@@ -49,39 +54,10 @@ const linking = {
 
 export default function App() {
   const navigationRef = useRef();
-  const [initialURLChecked, setInitialURLChecked] = useState(false);
 
- 
   useEffect(() => {
-    Linking.getInitialURL().then(url => {
-      if (url && navigationRef.current) {
-        const state = getStateFromPath(url, linking.config);
-        if (state?.routes?.length > 0) {
-          navigationRef.current.resetRoot(state);
-        } else {
-          console.warn('Deep link did not match any route:', url);
-        }
-      }
-      setInitialURLChecked(true);
-    });
-
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      if (navigationRef.current) {
-        const state = getStateFromPath(url, linking.config);
-        if (state?.routes?.length > 0) {
-          navigationRef.current.resetRoot(state);
-        } else {
-          console.warn('Deep link did not match any route:', url);
-        }
-      }
-    });
-
-    return () => subscription.remove();
+    // Optional: Add any other app initialization logic here
   }, []);
-
-  if (!initialURLChecked) {
-    return null; // optional: splash/loading screen
-  }
 
   return (
     <ApolloProvider client={client}>

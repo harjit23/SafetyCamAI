@@ -13,6 +13,7 @@ import { setContext } from '@apollo/client/link/context';
 import { RetryLink } from '@apollo/client/link/retry';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onError } from '@apollo/client/link/error';
+import { API_BASE_URL } from '../config';
 
 // Log GraphQL + network errors
 const errorLink = onError(({ graphQLErrors, networkError }) => {
@@ -27,7 +28,7 @@ const errorLink = onError(({ graphQLErrors, networkError }) => {
 });
 
 // 👉 use your dev tunnel / API URL here
-const httpLink = createHttpLink({ uri: 'https://api.safetycamai.com/graphql/' });
+const httpLink = createHttpLink({ uri: `${API_BASE_URL}/graphql/` });
 // const httpLink = createHttpLink({
 //   uri: 'https://q6nxq1m6-7245.inc1.devtunnels.ms/graphql/',
 // });
@@ -58,7 +59,7 @@ const retryHttpLink = new RetryLink({
 
 // WebSocket for subscriptions (no MFA needed here usually)
 const wsClient = createClient({
-  url: 'wss://api.safetycamai.com/graphql/',
+  url: `${API_BASE_URL.replace(/^http/, 'ws')}/graphql/`,
   // url: 'wss://q6nxq1m6-7245.inc1.devtunnels.ms/graphql/',
   lazy: true,
   keepAlive: 12000,

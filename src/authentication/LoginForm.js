@@ -19,6 +19,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import { useLoader } from '../context/LoaderContext';
 import { useAuth } from '../context/AuthContext';
 import { LOGIN_MUTATION } from '../graphql/mutations';
+import { API_BASE_URL } from '../config';
 
 export default function LoginForm({ switchTo }) {
   const { showLoader, hideLoader } = useLoader();
@@ -156,6 +157,26 @@ export default function LoginForm({ switchTo }) {
     }
   };
 
+  const handleSocialLogin = async provider => {
+    try {
+      // Store the provider so we know who to exchange with when we return
+      await AsyncStorage.setItem('pendingProvider', provider);
+      
+      const redirectUri = 'safetycamai://auth/login';
+      const authUrl = `${API_BASE_URL}/auth/${provider}?client=mobile&redirect_uri=${encodeURIComponent(
+        redirectUri,
+      )}`;
+      await Linking.openURL(authUrl);
+    } catch (error) {
+      console.error('Error initiating social login:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to open social login',
+      });
+    }
+  };
+
   return (
     <View style={styles.form}>
       <Text style={styles.heading}>Login</Text>
@@ -223,6 +244,24 @@ export default function LoginForm({ switchTo }) {
             source={require('../assets/Forward-Icon.png')}
             style={styles.iconImage}
           />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.socialButtonsContainer}>
+        <TouchableOpacity
+          style={[styles.socialButton, styles.googleButton]}
+          onPress={() => handleSocialLogin('google')}
+        >
+          <Icon name="google" size={20} color="#DB4437" style={styles.socialIcon} />
+          <Text style={styles.socialButtonText}>Login with Google</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.socialButton, styles.appleButton]}
+          onPress={() => handleSocialLogin('apple')}
+        >
+          <Icon name="apple" size={20} color="#000000" style={styles.socialIcon} />
+          <Text style={styles.socialButtonText}>Login with Apple</Text>
         </TouchableOpacity>
       </View>
 
@@ -344,6 +383,36 @@ const styles = StyleSheet.create({
   link: {
     color: '#0C66E4',
     fontWeight: '500',
+  },
+  socialButtonsContainer: {
+    marginTop: 20,
+    gap: 10,
+  },
+  socialButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    marginBottom: 8,
+  },
+  googleButton: {
+    borderColor: '#ddd',
+  },
+  appleButton: {
+    borderColor: '#ddd',
+  },
+  socialIcon: {
+    marginRight: 10,
+  },
+  socialButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
   },
 });
 

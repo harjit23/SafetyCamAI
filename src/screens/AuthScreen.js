@@ -10,9 +10,15 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation } from '@apollo/client';
+import { jwtDecode } from 'jwt-decode';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
+import { API_BASE_URL } from '../config';
 
 import RegisterForm from '../authentication/RegisterForm';
 import ForgotPassword from '../authentication/ForgotPassword';
@@ -26,12 +32,84 @@ import { useAlert } from '../context/AlertContext';
 export default function AuthScreen() {
   const [activeScreen, setActiveScreen] = useState('login');
   const route = useRoute();
+  const navigation = useNavigation();
+  const { setUser } = useAuth();
   const { showAlert } = useAlert();
   const [verifyEmailAddress] = useMutation(VERIFY_EMAIL_ADDRESS_MUTATION);
 
   useEffect(() => {
     const params = route.params || {};
-    const { code, email } = params;
+    const { code, email, provider } = params;
+
+    // Handle Social Login Code Exchange
+    const handleSocialExchange = async () => {
+      let targetProvider = provider;
+
+      if (code && !targetProvider) {
+        try {
+          targetProvider = await AsyncStorage.getItem('pendingProvider');
+          console.log('[AuthScreen] Retrieved pending provider:', targetProvider);
+          // Clear it immediately
+          await AsyncStorage.removeItem('pendingProvider');
+        } catch (e) {
+          console.warn('Failed to get pending provider', e);
+        }
+      }
+
+      if (code && targetProvider && !email) {
+        console.log('[AuthScreen] Received social login params:', { code, provider: targetProvider });
+        try {
+          console.log(`[AuthScreen] Exchanging code with ${API_BASE_URL}/auth/${targetProvider}/exchange`);
+          const response = await axios.post(
+            `${API_BASE_URL}/auth/${targetProvider}/exchange`,
+            JSON.stringify(code),
+            {
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+          console.log('[AuthScreen] Exchange response:', response.data);
+
+          const { token, refreshToken } = response.data?.token || {};
+
+          if (token && refreshToken) {
+            console.log('[AuthScreen] Tokens received, saving...');
+            await AsyncStorage.setItem('accessToken', token);
+            await AsyncStorage.setItem('refreshToken', refreshToken);
+
+            // Decode user id
+            try {
+              const decoded = jwtDecode(token);
+              const userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+              if (userId) {
+                await AsyncStorage.setItem('currentUserId', String(userId));
+              }
+            } catch (_) {}
+
+            // Update context and navigate
+            console.log('[AuthScreen] Setting user and navigating to Home');
+            setUser(response.data);
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Home' }],
+            });
+          } else {
+            console.error('[AuthScreen] Invalid token response:', response.data);
+            throw new Error('Invalid token response');
+          }
+        } catch (error) {
+          console.error('Error exchanging social code:', error);
+          if (error.response) {
+             console.error('Error response data:', error.response.data);
+             console.error('Error response status:', error.response.status);
+          }
+          showAlert('Login failed. Please try again.');
+        }
+      }
+    };
+
+    handleSocialExchange();
 
     switch (route.name) {
       case 'AuthLogin':
@@ -59,7 +137,7 @@ export default function AuthScreen() {
       default:
         setActiveScreen('login');
     }
-  }, [route.name, route.params, verifyEmailAddress, showAlert]);
+  }, [route.name, route.params, verifyEmailAddress, showAlert, setUser, navigation]);
 
   const renderScreen = () => {
     switch (activeScreen) {
