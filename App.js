@@ -19,6 +19,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import Loader from './src/components/Loader';
 import MugshotWebView from './src/screens/MugshotWebView';
 import HistoryScreen from './src/screens/HistoryScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -27,6 +28,7 @@ const linking = {
   config: {
     screens: {
       Home: 'home',
+      Profile: 'profile',
       AuthLogin: 'auth/login',
       AuthRegister: 'auth/register',
       AuthReset: {
@@ -51,7 +53,7 @@ export default function App() {
   const navigationRef = useRef();
   const [initialURLChecked, setInitialURLChecked] = useState(false);
 
- 
+
   useEffect(() => {
     Linking.getInitialURL().then(url => {
       if (url && navigationRef.current) {
@@ -90,19 +92,20 @@ export default function App() {
           <LoaderProvider>
             <NavigationContainer ref={navigationRef} linking={linking}>
               <Stack.Navigator screenOptions={{ headerShown: false }}>
-                 <Stack.Screen name="Home">
-                {props => (
-                  <AlertProvider>
-                    <HomeScreen {...props} />
-                  </AlertProvider>
-                )}
-              </Stack.Screen>
+                <Stack.Screen name="Home">
+                  {props => (
+                    <AlertProvider>
+                      <HomeScreen {...props} />
+                    </AlertProvider>
+                  )}
+                </Stack.Screen>
                 <Stack.Screen name="AuthLogin" component={AuthScreen} />
                 <Stack.Screen name="AuthRegister" component={AuthScreen} />
                 <Stack.Screen name="AuthReset" component={AuthScreen} />
                 <Stack.Screen name="AuthVerify" component={AuthScreen} />
                 <Stack.Screen name="MugshotWebView" component={MugshotWebView} />
                 <Stack.Screen name="History" component={HistoryScreen} />
+                <Stack.Screen name="Profile" component={ProfileScreen} />
               </Stack.Navigator>
             </NavigationContainer>
             <Loader />

@@ -22,7 +22,7 @@ const Navbar = () => {
 
 
   // history component routing 
-  const onHistoryPress =()=>{
+  const onHistoryPress = () => {
     navigation.navigate("RecentHistory")
 
   }
@@ -43,7 +43,7 @@ const Navbar = () => {
                 style={styles.historyImage}
               />
             </TouchableOpacity>
-            
+
           )}
 
           <TouchableOpacity
@@ -81,23 +81,33 @@ const Navbar = () => {
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity
-                onPress={async () => {
-                  await logout();
-                  setMenuVisible(false);
-                  Toast.show({
-                    type: 'info',
-                    text1: 'Logged out',
-                    text2: 'You have been logged out successfully.',
-                  });
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Home' }],
-                  });
-                }}
-              >
-                <Text style={styles.dropdownItem}>Logout</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    setMenuVisible(false);
+                    navigation.navigate('Profile');
+                  }}
+                >
+                  <Text style={styles.dropdownItem}>My Profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await logout();
+                    setMenuVisible(false);
+                    Toast.show({
+                      type: 'info',
+                      text1: 'Logged out',
+                      text2: 'You have been logged out successfully.',
+                    });
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Home' }],
+                    });
+                  }}
+                >
+                  <Text style={styles.dropdownItem}>Logout</Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </TouchableOpacity>

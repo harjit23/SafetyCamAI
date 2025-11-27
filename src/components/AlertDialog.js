@@ -17,10 +17,9 @@ const AlertDialog = () => {
   const { alertInfo, closeAlert } = useAlert();
 
   const upgradeNow = () => {
-    // Linking.openURL('https://buy.stripe.com/14k5mlbRx1VGfBe003?locale=en&__embed_source=buy_btn_1RNajwKLsA7J6NNllOqM5WFB');
-    const url =
-      'https://buy.stripe.com/14k5mlbRx1VGfBe003?locale=en&__embed_source=buy_btn_1RNajwKLsA7J6NNllOqM5WFB';
-    navigation.navigate('MugshotWebView', { url, title: 'Upgrade' });
+    // Apple App Store compliance: No external payment links
+    // Users must visit website to manage subscription
+    Linking.openURL('https://app.safetycamai.com/');
     closeAlert();
   };
 

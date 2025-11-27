@@ -82,6 +82,7 @@ export const GET_ME = gql`
       id
       email
       name
+      linked_accounts
     }
   }
 `;
@@ -105,6 +106,33 @@ export const GET_PENDING_LOOKUPS = gql`
     }
   }
 `;
+
+// 👉 MFA validateOtp (same shape as web)
+export const VALIDATE_OTP = gql`
+  mutation validateOtp($otp: String!) {
+    validateOtp(otp: $otp) {
+      token {
+        token
+        refreshToken
+      }
+      isEmailVerified
+    }
+  }
+`;
+
+// 👉 Account Deletion (required by Apple)
+export const DELETE_USER = gql`
+  mutation deleteUser($id: String!) {
+    deleteUser(id: $id)
+  }
+`;
+
+export const CONFIGURE_MFA = gql`
+  mutation {
+    configureTwoFactor
+  }
+`;
+
 // import axios from 'axios';
 // import { client } from '../apollo/client';
 // import { STATUS_SUBSCRIPTION } from './subscriptions';

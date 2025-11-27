@@ -1,5 +1,11 @@
 // apollo/client.ts
-import { ApolloClient, InMemoryCache, split, createHttpLink, from } from '@apollo/client';
+import {
+  ApolloClient,
+  InMemoryCache,
+  split,
+  createHttpLink,
+  from,
+} from '@apollo/client';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { createClient } from 'graphql-ws';
 import { getMainDefinition } from '@apollo/client/utilities';
@@ -7,23 +13,42 @@ import { setContext } from '@apollo/client/link/context';
 import { RetryLink } from '@apollo/client/link/retry';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onError } from '@apollo/client/link/error';
+import { API_BASE_URL } from '../config';
 
+// Log GraphQL + network errors
 const errorLink = onError(({ graphQLErrors, networkError }) => {
-  if (graphQLErrors) graphQLErrors.forEach(err =>
-    console.error("GraphQL Error:", err)
-  );
-  if (networkError) console.error("Network Error:", networkError);
+  if (graphQLErrors) {
+    graphQLErrors.forEach(err => {
+      console.error('GraphQL Error:', err);
+    });
+  }
+  if (networkError) {
+    console.error('Network Error:', networkError);
+  }
 });
 
+// 👉 use your dev tunnel / API URL here
+const httpLink = createHttpLink({ uri: `${API_BASE_URL}/graphql/` });
 
-const httpLink = createHttpLink({ uri: 'https://api.safetycamai.com/graphql/' });
-
+// Attach Authorization + MFA token like Vue auth.interceptor
 const authLink = setContext(async (_, { headers }) => {
-  const token = await AsyncStorage.getItem('accessToken');
+  const accessToken = await AsyncStorage.getItem("accessToken");
+  const mfaToken = await AsyncStorage.getItem("mfaToken");
+
+  // Helper to check if string looks like a JWT
+  const isValidJwt = (t) => t && typeof t === 'string' && t.startsWith('eyJ');
+
+  let authHeader = '';
+  if (isValidJwt(accessToken)) {
+    authHeader = `Bearer ${accessToken}`;
+  } else if (isValidJwt(mfaToken)) {
+    authHeader = `Bearer ${mfaToken}`;
+  }
+
   return {
     headers: {
       ...headers,
-      authorization: token ? `Bearer ${token}` : '',
+      authorization: authHeader,
     },
   };
 });
@@ -38,16 +63,20 @@ const retryHttpLink = new RetryLink({
 // });
 
 const wsClient = createClient({
-  url: 'wss://api.safetycamai.com/graphql/',
+  url: `${API_BASE_URL.replace(/^http/, 'ws')}/graphql/`,
   lazy: true,
-  keepAlive: 12000,                               // send ping every 12s
+  keepAlive: 12000,
   retryAttempts: Infinity,
-  retryWait: async (retries) =>
-    new Promise((res) => setTimeout(res, Math.min(1000 * 2 ** retries, 10000))), // exp backoff
+  retryWait: async retries =>
+    new Promise(res =>
+      setTimeout(res, Math.min(1000 * 2 ** retries, 10000)),
+    ),
   shouldRetry: () => true,
   connectionParams: async () => {
-    const token = await AsyncStorage.getItem('accessToken');
-    return { authorization: token ? `Bearer ${token}` : '' };
+    const accessToken = await AsyncStorage.getItem('accessToken');
+    return {
+      authorization: accessToken ? `Bearer ${accessToken}` : '',
+    };
   },
 });
 

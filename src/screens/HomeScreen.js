@@ -20,6 +20,7 @@ import { gql } from '@apollo/client';
 import { client } from '../apollo/client';
 
 import { GET_PENDING_LOOKUPS, GET_USER_API_KEY } from '../graphql/mutations';
+import { API_BASE_URL } from '../config';
 
 import Navbar from '../components/Navbar';
 import UploadBox from '../components/UploadBox';
@@ -243,7 +244,7 @@ export default function HomeScreen() {
       type: file.type || 'image/jpeg',
     });
 
-    const res = await fetch('https://api.safetycamai.com/graphql/', {
+    const res = await fetch(`${API_BASE_URL}/graphql/`, {
       method: 'POST',
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -392,9 +393,12 @@ export default function HomeScreen() {
   );
 
   const openStripeCheckout = () => {
-    const url =
-      'https://buy.stripe.com/14k5mlbRx1VGfBe003?locale=en&__embed_source=buy_btn_1RNajwKLsA7J6NNllOqM5WFB';
-    navigation.navigate('MugshotWebView', { url, title: 'Upgrade' });
+    // Apple App Store compliance: No external payment links
+    // Direct users to website for account management
+    navigation.navigate('MugshotWebView', { 
+      url: 'https://app.safetycamai.com/', 
+      title: 'Manage Account' 
+    });
   };
 
   return (
