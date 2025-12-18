@@ -71,8 +71,9 @@ export default function LoginForm({ switchTo }) {
       // Clear any stale tokens before new login attempt to prevent 500 errors
       await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'mfaToken']);
 
-      const { data } = await login({ variables: { email, password } });
+      const { data } = await login({ variables: { email, password, rememberMe: false } });
       const loginRes = data?.login;
+      console.log('🔐 Full Login Response:', JSON.stringify(loginRes, null, 2));
 
       if (!loginRes) {
         Toast.show({
@@ -93,6 +94,9 @@ export default function LoginForm({ switchTo }) {
       }
 
       const { token, refreshToken } = loginRes.token || {};
+
+      console.log('🔐 Login Token:', token);
+
       if (!token || !refreshToken) {
         Toast.show({
           type: 'error',
@@ -120,17 +124,33 @@ export default function LoginForm({ switchTo }) {
         text2: 'Welcome back!',
       });
 
+      console.log('🔐 Setting user in context:', loginRes);
       setUser(loginRes);
-      navigation.navigate('Home');
+
+      // Check if we should redirect to subscription screen
+      const redirectToSubscription = await AsyncStorage.getItem('redirectToSubscription');
+      if (redirectToSubscription === 'true') {
+        await AsyncStorage.removeItem('redirectToSubscription');
+        navigation.navigate('Subscription');
+      } else {
+        navigation.navigate('Home');
+      }
     } catch (err) {
       // 🔐 MFA handling (mirror Vue)
+      console.log('[Login] Error caught:', err);
+      console.log('[Login] GraphQL Errors:', err?.graphQLErrors);
       const msg = err?.graphQLErrors?.[0]?.message || err?.message || '';
+      console.log('[Login] Error message:', msg);
 
       // Strict check for MFA_REQUIRED to avoid parsing random network errors as tokens
       if (msg && msg.includes('MFA_REQUIRED')) {
+        console.log('[Login] MFA_REQUIRED detected in message');
         const graphErrs = msg.split(':') || [];
         const reason = (graphErrs[0] || '').trim();           // e.g. "MFA_REQUIRED"
         const tokenFromError = (graphErrs[1] || '').trim();   // the long JWT
+
+        console.log('[Login] Reason:', reason);
+        console.log('[Login] Token from error:', tokenFromError);
 
         if (reason === 'MFA_REQUIRED' && tokenFromError) {
           // Vue: auth.setItem(graphErrs[1], constants.mfaToken)
@@ -142,7 +162,11 @@ export default function LoginForm({ switchTo }) {
           switchTo && switchTo('mfa');
           hideLoader();
           return;
+        } else {
+          console.log('[Login] MFA_REQUIRED found but validation failed');
         }
+      } else {
+        console.log('[Login] MFA_REQUIRED not found in error message');
       }
 
       const backendMessage =

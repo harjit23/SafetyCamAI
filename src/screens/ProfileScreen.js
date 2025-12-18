@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { jwtDecode } from 'jwt-decode';
 import { DELETE_USER, GET_ME } from '../graphql/mutations'; // Imported GET_ME
 import { client } from '../apollo/client';
+import Navbar from '../components/Navbar';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
@@ -32,7 +33,10 @@ const ProfileScreen = () => {
   const { data: userData, loading, error, refetch } = useQuery(GET_ME, {
     fetchPolicy: 'network-only',
     onCompleted: (data) => {
+      console.log('👤 GET_ME Query Response:', JSON.stringify(data, null, 2));
       if (data?.me) {
+        console.log('👤 User Profile Data:', data.me);
+        console.log('👤 Linked Accounts:', data.me.linked_accounts);
         setUserProfile(data.me);
       }
     },
@@ -48,6 +52,7 @@ const ProfileScreen = () => {
             name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
             email: decoded.email || decoded.upn || 'No Email',
             id: decoded.id || decoded.sub,
+            linked_accounts: decoded.linked_accounts, // Extract from JWT
           });
         }
       } catch (e) {
@@ -70,12 +75,14 @@ const ProfileScreen = () => {
         const token = await AsyncStorage.getItem('accessToken');
         if (token) {
           const decoded = jwtDecode(token);
+          console.log('👤 Decoded JWT token:', decoded);
           // Only update if we don't have data yet or if GET_ME failed
           setUserProfile(prev => ({
             ...prev,
             name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
             email: decoded.email || decoded.upn || prev.email,
             id: decoded.id || decoded.sub || prev.id,
+            linked_accounts: decoded.linked_accounts || prev.linked_accounts, // Extract from JWT
           }));
         }
       } catch (e) {
@@ -149,141 +156,150 @@ const ProfileScreen = () => {
   };
 
   const openPrivacyPolicy = () => {
-    Linking.openURL('https://app.safetycamai.com/privacy-policy');
+    Linking.openURL('https://safetycamai.com/privacy/');
   };
 
   return (
-    <LinearGradient colors={['#007bff', '#67b0fa']} style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#007bff" />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <>
+      <Navbar />
+      <LinearGradient colors={['#007bff', '#67b0fa']} style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#007bff" />
+        <ScrollView contentContainerStyle={styles.scrollContent}>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-left" size={20} color="#fff" />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.headerTitle}>My Profile</Text>
-            <Text style={styles.headerSubtitle}>Manage your account settings</Text>
-          </View>
-        </View>
-
-        {/* Profile Card */}
-        <View style={styles.card}>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              <Icon name="user" size={40} color="#fff" />
-            </View>
-            {loading ? (
-              <ActivityIndicator size="small" color="#007bff" />
-            ) : (
-              <>
-                <Text style={styles.userName}>{userProfile?.name || 'User'}</Text>
-                <Text style={styles.userEmail}>{userProfile?.email || 'Loading email...'}</Text>
-              </>
-            )}
-          </View>
-
-          <View style={styles.badgeContainer}>
-            <View style={styles.badge}>
-              <Icon name="check-circle" size={16} color="#155724" style={{ marginRight: 6 }} />
-              <Text style={styles.badgeText}>Account Verified</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Account Info */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Account Information</Text>
-          <View style={styles.infoRow}>
-            <View>
-              <Text style={styles.label}>Email Address</Text>
-              <Text style={styles.value}>{userProfile?.email || '...'}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Linked Accounts */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Linked Accounts</Text>
-          <Text style={styles.cardSubtitle}>Manage your linked social accounts</Text>
-
-          {['google', 'apple'].map((provider) => {
-            // Check if linked: handle both array of strings or array of objects
-            const isLinked = Array.isArray(userProfile?.linked_accounts) &&
-              userProfile.linked_accounts.some(acc =>
-                (typeof acc === 'string' && acc === provider) ||
-                (acc?.provider === provider)
-              );
-
-            return (
-              <View key={provider} style={styles.accountRow}>
-                <View style={styles.accountInfo}>
-                  <Icon
-                    name={provider === 'google' ? 'google' : 'apple'}
-                    size={20}
-                    color={provider === 'google' ? '#DB4437' : '#000'}
-                  />
-                  <Text style={styles.accountName}>
-                    {provider.charAt(0).toUpperCase() + provider.slice(1)}
-                  </Text>
-                </View>
-
-                {isLinked ? (
-                  <View style={styles.linkedBadge}>
-                    <Icon name="check" size={12} color="#155724" />
-                    <Text style={styles.linkedText}>Linked</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.linkButtonSmall}
-                    onPress={() => {
-                      const baseUrl = 'https://api.safetycamai.com'; // Or use API_BASE_URL from config
-                      // Using client=mobile to ensure it redirects back to app if configured
-                      // Added redirect_uri to ensure it comes back to Profile
-                      const redirectUri = 'safetycamai://profile';
-                      const url = `${baseUrl}/auth/${provider}?client=mobile&purpose=link&userId=${userProfile.id}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-                      Linking.openURL(url);
-                    }}
-                  >
-                    <Text style={styles.linkButtonSmallText}>Link</Text>
-                  </TouchableOpacity>
-                )}
+          {/* Profile Card */}
+          <View style={styles.card}>
+            <View style={styles.profileHeader}>
+              <View style={styles.avatarContainer}>
+                <Icon name="user" size={40} color="#fff" />
               </View>
-            );
-          })}
-        </View>
+              {loading ? (
+                <ActivityIndicator size="small" color="#007bff" />
+              ) : (
+                <>
+                  <Text style={styles.userName}>{userProfile?.name || 'User'}</Text>
+                  <Text style={styles.userEmail}>{userProfile?.email || 'Loading email...'}</Text>
+                </>
+              )}
+            </View>
 
-        {/* Privacy & Data */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Privacy & Data</Text>
-          <TouchableOpacity style={styles.linkButton} onPress={openPrivacyPolicy}>
-            <Text style={styles.linkButtonText}>Privacy Policy & Face Data Usage</Text>
-          </TouchableOpacity>
-          <Text style={styles.privacyNote}>
-            We use facial recognition to analyze photos and match them against our criminal database.
-            Face data is processed securely on our servers and is not permanently stored on your device.
-          </Text>
-        </View>
-
-        {/* Danger Zone - Professional Look */}
-        <View style={styles.dangerZoneCard}>
-          <View style={styles.dangerHeader}>
-            <Icon name="exclamation-triangle" size={20} color="#dc3545" />
-            <Text style={styles.dangerTitle}>Danger Zone</Text>
+            <View style={styles.badgeContainer}>
+              <View style={styles.badge}>
+                <Icon name="check-circle" size={16} color="#155724" style={{ marginRight: 6 }} />
+                <Text style={styles.badgeText}>Account Verified</Text>
+              </View>
+            </View>
           </View>
 
-          <Text style={styles.dangerDesc}>
-            Deleting your account is irreversible. All your data will be permanently removed.
-          </Text>
+          {/* Account Info */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Account Information</Text>
+            <View style={styles.infoRow}>
+              <View>
+                <Text style={styles.label}>Email Address</Text>
+                <Text style={styles.value}>{userProfile?.email || '...'}</Text>
+              </View>
+            </View>
+          </View>
 
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
-            <Text style={styles.deleteButtonText}>Delete Account</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Linked Accounts */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Linked Accounts</Text>
+            <Text style={styles.cardSubtitle}>Manage your linked social accounts</Text>
 
-      </ScrollView>
-    </LinearGradient>
+            {['google', 'apple'].map((provider) => {
+              // Parse linked_accounts if it's a string (from JWT)
+              let linkedAccountsArray = [];
+              try {
+                if (typeof userProfile?.linked_accounts === 'string') {
+                  linkedAccountsArray = JSON.parse(userProfile.linked_accounts);
+                } else if (Array.isArray(userProfile?.linked_accounts)) {
+                  linkedAccountsArray = userProfile.linked_accounts;
+                }
+              } catch (e) {
+                console.error('Failed to parse linked_accounts:', e);
+              }
+
+              // Check if linked: compare uppercase provider names
+              const isLinked = Array.isArray(linkedAccountsArray) &&
+                linkedAccountsArray.some(acc =>
+                  (typeof acc === 'string' && acc.toLowerCase() === provider) ||
+                  (acc?.Provider?.toLowerCase() === provider) ||
+                  (acc?.provider?.toLowerCase() === provider)
+                );
+
+              console.log(`👤 Checking ${provider} - linked_accounts:`, userProfile?.linked_accounts);
+              console.log(`👤 Parsed array:`, linkedAccountsArray);
+              console.log(`👤 ${provider} isLinked:`, isLinked);
+
+              return (
+                <View key={provider} style={styles.accountRow}>
+                  <View style={styles.accountInfo}>
+                    <Icon
+                      name={provider === 'google' ? 'google' : 'apple'}
+                      size={20}
+                      color={provider === 'google' ? '#DB4437' : '#000'}
+                    />
+                    <Text style={styles.accountName}>
+                      {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                    </Text>
+                  </View>
+
+                  {isLinked ? (
+                    <View style={styles.linkedBadge}>
+                      <Icon name="check" size={12} color="#155724" />
+                      <Text style={styles.linkedText}>Linked</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.linkButtonSmall}
+                      onPress={() => {
+                        const baseUrl = 'https://api.safetycamai.com'; // Or use API_BASE_URL from config
+                        // Using client=mobile to ensure it redirects back to app if configured
+                        // Added redirect_uri to ensure it comes back to Profile
+                        const redirectUri = 'safetycamai://profile';
+                        const url = `${baseUrl}/auth/${provider}?client=mobile&purpose=link&userId=${userProfile.id}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+                        Linking.openURL(url);
+                      }}
+                    >
+                      <Text style={styles.linkButtonSmallText}>Link</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Privacy & Data */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Privacy & Data</Text>
+            <TouchableOpacity style={styles.linkButton} onPress={openPrivacyPolicy}>
+              <Text style={styles.linkButtonText}>Privacy Policy & Face Data Usage</Text>
+            </TouchableOpacity>
+            <Text style={styles.privacyNote}>
+              We use facial recognition to analyze photos and match them against our criminal database.
+              Face data is processed securely on our servers and is not permanently stored on your device.
+            </Text>
+          </View>
+
+          {/* Danger Zone - Professional Look */}
+          <View style={styles.dangerZoneCard}>
+            <View style={styles.dangerHeader}>
+              <Icon name="exclamation-triangle" size={20} color="#dc3545" />
+              <Text style={styles.dangerTitle}>Danger Zone</Text>
+            </View>
+
+            <Text style={styles.dangerDesc}>
+              Deleting your account is irreversible. All your data will be permanently removed.
+            </Text>
+
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
+              <Text style={styles.deleteButtonText}>Delete Account</Text>
+            </TouchableOpacity>
+          </View>
+
+        </ScrollView>
+      </LinearGradient>
+    </>
   );
 };
 

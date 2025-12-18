@@ -20,6 +20,7 @@ import Loader from './src/components/Loader';
 import MugshotWebView from './src/screens/MugshotWebView';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import SubscriptionScreen from './src/screens/SubscriptionScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -106,6 +107,7 @@ export default function App() {
                 <Stack.Screen name="MugshotWebView" component={MugshotWebView} />
                 <Stack.Screen name="History" component={HistoryScreen} />
                 <Stack.Screen name="Profile" component={ProfileScreen} />
+                <Stack.Screen name="Subscription" component={SubscriptionScreen} />
               </Stack.Navigator>
             </NavigationContainer>
             <Loader />

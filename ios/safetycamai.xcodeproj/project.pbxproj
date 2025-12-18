@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		146035932D3B3D1720D8646F /* libPods-safetycamai.a in Frameworks */ = {isa = PBXBuildFile; fileRef = FBFA95B99B756F69F966AD41 /* libPods-safetycamai.a */; };
+		305FB91DCF302E015F2E0B62 /* libPods-safetycamai.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AB06266A858E97964D223456 /* libPods-safetycamai.a */; };
 		752E4DBD2E9FBFB80058475B /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 752E4DBC2E9FBFB80058475B /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
@@ -20,13 +20,21 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = safetycamai/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = safetycamai/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = safetycamai/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		49E4EF1B78454CF1748E3298 /* Pods-safetycamai.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-safetycamai.release.xcconfig"; path = "Target Support Files/Pods-safetycamai/Pods-safetycamai.release.xcconfig"; sourceTree = "<group>"; };
+		610186A52EEFEC6100BD2FD2 /* FontAwesome.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome.ttf; sourceTree = "<group>"; };
+		610186A62EEFEC6100BD2FD2 /* FontAwesome5_Brands.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome5_Brands.ttf; sourceTree = "<group>"; };
+		610186A72EEFEC6100BD2FD2 /* FontAwesome5_Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome5_Regular.ttf; sourceTree = "<group>"; };
+		610186A82EEFEC6100BD2FD2 /* FontAwesome5_Solid.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome5_Solid.ttf; sourceTree = "<group>"; };
+		610186A92EEFEC6100BD2FD2 /* FontAwesome6_Brands.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome6_Brands.ttf; sourceTree = "<group>"; };
+		610186AA2EEFEC6100BD2FD2 /* FontAwesome6_Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome6_Regular.ttf; sourceTree = "<group>"; };
+		610186AB2EEFEC6100BD2FD2 /* FontAwesome6_Solid.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FontAwesome6_Solid.ttf; sourceTree = "<group>"; };
+		61F1BE942EF2828000448045 /* safetycamai.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = safetycamai.entitlements; path = safetycamai/safetycamai.entitlements; sourceTree = "<group>"; };
 		752E4DBC2E9FBFB80058475B /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = safetycamai/AppDelegate.swift; sourceTree = "<group>"; };
-		7F8A2A1E66588535F829E457 /* Pods-safetycamai.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-safetycamai.debug.xcconfig"; path = "Target Support Files/Pods-safetycamai/Pods-safetycamai.debug.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = safetycamai/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		AB06266A858E97964D223456 /* libPods-safetycamai.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-safetycamai.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B35E25CFE06FF59E595D8A6C /* Pods-safetycamai.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-safetycamai.debug.xcconfig"; path = "Target Support Files/Pods-safetycamai/Pods-safetycamai.debug.xcconfig"; sourceTree = "<group>"; };
+		C7E732FACC28EB2822ADE2F1 /* Pods-safetycamai.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-safetycamai.release.xcconfig"; path = "Target Support Files/Pods-safetycamai/Pods-safetycamai.release.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		FBFA95B99B756F69F966AD41 /* libPods-safetycamai.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-safetycamai.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -34,7 +42,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				146035932D3B3D1720D8646F /* libPods-safetycamai.a in Frameworks */,
+				305FB91DCF302E015F2E0B62 /* libPods-safetycamai.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -44,6 +52,7 @@
 		13B07FAE1A68108700A75B9A /* safetycamai */ = {
 			isa = PBXGroup;
 			children = (
+				61F1BE942EF2828000448045 /* safetycamai.entitlements */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
@@ -58,9 +67,23 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				FBFA95B99B756F69F966AD41 /* libPods-safetycamai.a */,
+				AB06266A858E97964D223456 /* libPods-safetycamai.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		610186AC2EEFEC6100BD2FD2 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				610186A52EEFEC6100BD2FD2 /* FontAwesome.ttf */,
+				610186A62EEFEC6100BD2FD2 /* FontAwesome5_Brands.ttf */,
+				610186A72EEFEC6100BD2FD2 /* FontAwesome5_Regular.ttf */,
+				610186A82EEFEC6100BD2FD2 /* FontAwesome5_Solid.ttf */,
+				610186A92EEFEC6100BD2FD2 /* FontAwesome6_Brands.ttf */,
+				610186AA2EEFEC6100BD2FD2 /* FontAwesome6_Regular.ttf */,
+				610186AB2EEFEC6100BD2FD2 /* FontAwesome6_Solid.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -73,6 +96,7 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				610186AC2EEFEC6100BD2FD2 /* Fonts */,
 				13B07FAE1A68108700A75B9A /* safetycamai */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -95,8 +119,8 @@
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				7F8A2A1E66588535F829E457 /* Pods-safetycamai.debug.xcconfig */,
-				49E4EF1B78454CF1748E3298 /* Pods-safetycamai.release.xcconfig */,
+				B35E25CFE06FF59E595D8A6C /* Pods-safetycamai.debug.xcconfig */,
+				C7E732FACC28EB2822ADE2F1 /* Pods-safetycamai.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -108,13 +132,13 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "safetycamai" */;
 			buildPhases = (
-				68048D63878F3D42A8BC90D0 /* [CP] Check Pods Manifest.lock */,
+				147D1B32BA7FDD1D539A3A96 /* [CP] Check Pods Manifest.lock */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
-				2E8B7622E001F736BD4DAC7F /* [CP] Embed Pods Frameworks */,
-				C567EFA6E8544F19D90E2545 /* [CP] Copy Pods Resources */,
+				40F6D83EE37B8444EF931505 /* [CP] Embed Pods Frameworks */,
+				5C2EEEF7D512893A9EDAD091 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -187,28 +211,7 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n";
 		};
-		2E8B7622E001F736BD4DAC7F /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-safetycamai/Pods-safetycamai-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			inputPaths = (
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-safetycamai/Pods-safetycamai-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-safetycamai/Pods-safetycamai-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		68048D63878F3D42A8BC90D0 /* [CP] Check Pods Manifest.lock */ = {
+		147D1B32BA7FDD1D539A3A96 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -230,7 +233,28 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		C567EFA6E8544F19D90E2545 /* [CP] Copy Pods Resources */ = {
+		40F6D83EE37B8444EF931505 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-safetycamai/Pods-safetycamai-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-safetycamai/Pods-safetycamai-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-safetycamai/Pods-safetycamai-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		5C2EEEF7D512893A9EDAD091 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -267,14 +291,15 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7F8A2A1E66588535F829E457 /* Pods-safetycamai.debug.xcconfig */;
+			baseConfigurationReference = B35E25CFE06FF59E595D8A6C /* Pods-safetycamai.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = safetycamai/safetycamai.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1..1.2;
+				CURRENT_PROJECT_VERSION = 1.3.0;
 				DEVELOPMENT_TEAM = 8AVVF76GUH;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = safetycamai/Info.plist;
@@ -283,7 +308,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -300,14 +325,15 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 49E4EF1B78454CF1748E3298 /* Pods-safetycamai.release.xcconfig */;
+			baseConfigurationReference = C7E732FACC28EB2822ADE2F1 /* Pods-safetycamai.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = safetycamai/safetycamai.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1..1.2;
+				CURRENT_PROJECT_VERSION = 1.3.0;
 				DEVELOPMENT_TEAM = 8AVVF76GUH;
 				INFOPLIST_FILE = safetycamai/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -315,7 +341,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

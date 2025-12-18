@@ -1,5 +1,7 @@
-// src/screens/AuthScreen.js
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Icon from 'react-native-vector-icons/FontAwesome';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -9,9 +11,8 @@ import {
   ScrollView,
   Platform,
   StatusBar,
+  TouchableOpacity,
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation } from '@apollo/client';
 import { jwtDecode } from 'jwt-decode';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -88,12 +89,23 @@ export default function AuthScreen() {
             } catch (_) {}
 
             // Update context and navigate
-            console.log('[AuthScreen] Setting user and navigating to Home');
+            console.log('[AuthScreen] Setting user and checking redirection...');
             setUser(response.data);
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Home' }],
-            });
+
+            // Check if we should redirect to subscription screen
+            const redirectToSubscription = await AsyncStorage.getItem('redirectToSubscription');
+            if (redirectToSubscription === 'true') {
+              await AsyncStorage.removeItem('redirectToSubscription');
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Subscription' }],
+              });
+            } else {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              });
+            }
           } else {
             console.error('[AuthScreen] Invalid token response:', response.data);
             throw new Error('Invalid token response');
@@ -167,6 +179,14 @@ export default function AuthScreen() {
           source={require('../assets/Authorization-Background.png')}
           style={styles.bg}
         />
+        
+        {/* Back Button */}
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('Home')} 
+          style={styles.backButton}
+        >
+          <Icon name="arrow-left" size={24} color="#fff" />
+        </TouchableOpacity>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -208,6 +228,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 10,
+    left: 20,
+    zIndex: 10,
+    padding: 10,
   },
 });
 

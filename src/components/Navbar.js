@@ -10,16 +10,17 @@ import {
   SafeAreaView,
   Image,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import Toast from 'react-native-toast-message';
+import Icon from 'react-native-vector-icons/FontAwesome';
 
 const Navbar = () => {
   const navigation = useNavigation();
   const { user, logout } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
 
-
+  const route = useRoute();
 
   // history component routing 
   const onHistoryPress = () => {
@@ -31,9 +32,16 @@ const Navbar = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.logo}>
-          <Text style={{ fontWeight: 'bold' }}>Safety Cam AI</Text>
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {route.name !== 'Home' && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 10, padding: 5 }}>
+              <Icon name="arrow-left" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          <Text style={styles.logo}>
+            <Text style={{ fontWeight: 'bold' }}>Safety Cam AI</Text>
+          </Text>
+        </View>
 
         <View style={styles.rightButtons}>
           {user && (

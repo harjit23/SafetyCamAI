@@ -31,7 +31,13 @@ const errorLink = onError(({ graphQLErrors, networkError }) => {
 const httpLink = createHttpLink({ uri: `${API_BASE_URL}/graphql/` });
 
 // Attach Authorization + MFA token like Vue auth.interceptor
-const authLink = setContext(async (_, { headers }) => {
+const authLink = setContext(async (_, { headers, skipAuth }) => {
+  // If the operation explicitly requests to skip auth (e.g. for guest actions),
+  // do not attach any tokens.
+  if (skipAuth) {
+    return { headers };
+  }
+
   const accessToken = await AsyncStorage.getItem("accessToken");
   const mfaToken = await AsyncStorage.getItem("mfaToken");
 

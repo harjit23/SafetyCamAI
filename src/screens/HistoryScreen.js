@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { jwtDecode } from 'jwt-decode';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import Navbar from '../components/Navbar';
 
 const GET_HISTORY = gql`
   query ($userId: String!, $pageNo: Int!, $pageSize: Int!) {
@@ -170,98 +171,101 @@ export default function HistoryScreen() {
     );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
-      <StatusBar barStyle="light-content" backgroundColor="black" />
-      <View style={styles.container}>
-        {/* Layout wrapper: row on large screens; single column on mobile */}
-        <View style={[styles.row, isLarge && { paddingLeft: SIDEBAR_WIDTH }]}>
-          {/* Fixed sidebar (visible on large screens) */}
-          {isLarge && <View style={[styles.sidebarFixed]}>{Sidebar}</View>}
+    <>
+      <Navbar />
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['bottom']}>
+        <StatusBar barStyle="light-content" backgroundColor="#007bff" />
+        <View style={styles.container}>
+          {/* Layout wrapper: row on large screens; single column on mobile */}
+          <View style={[styles.row, isLarge && { paddingLeft: SIDEBAR_WIDTH }]}>
+            {/* Fixed sidebar (visible on large screens) */}
+            {isLarge && <View style={[styles.sidebarFixed]}>{Sidebar}</View>}
 
-          {/* Floating toggle button (mobile only) */}
-          {!isLarge && history.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSidebarOpen(v => !v)}
-              style={[styles.fab, sidebarOpen && styles.fabClose]}
-              accessibilityLabel="Toggle recent searches"
-            >
-              <Text style={styles.fabText}>{sidebarOpen ? '×' : '≡'}</Text>
-            </TouchableOpacity>
-          )}
+            {/* Floating toggle button (mobile only) */}
+            {!isLarge && history.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSidebarOpen(v => !v)}
+                style={[styles.fab, sidebarOpen && styles.fabClose]}
+                accessibilityLabel="Toggle recent searches"
+              >
+                <Text style={styles.fabText}>{sidebarOpen ? '×' : '≡'}</Text>
+              </TouchableOpacity>
+            )}
 
-          {/* Mobile overlay sidebar */}
-          {!isLarge && sidebarOpen && (
-            <>
-              <Pressable
-                style={styles.overlay}
-                onPress={() => setSidebarOpen(false)}
-              />
-              <View style={styles.sidebarOverlay}>{Sidebar}</View>
-            </>
-          )}
-
-          {/* Main content */}
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {history.length === 0 ? (
-              EmptyState
-            ) : selectedItem ? (
+            {/* Mobile overlay sidebar */}
+            {!isLarge && sidebarOpen && (
               <>
-                <View style={styles.headerRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>Search Details</Text>
-                    <Text style={styles.date}>
-                      Performed on: {formatDate(selectedItem.createdDate)}
-                    </Text>
-                  </View>
-                  {!!selectedItem.requestImage && (
-                    <Image
-                      source={{
-                        uri: `data:image/jpeg;base64,${selectedItem.requestImage}`,
-                      }}
-                      style={styles.requestThumb}
-                    />
-                  )}
-                </View>
+                <Pressable
+                  style={styles.overlay}
+                  onPress={() => setSidebarOpen(false)}
+                />
+                <View style={styles.sidebarOverlay}>{Sidebar}</View>
+              </>
+            )}
 
-                {selectedItem.results?.map((r, i) => (
-                  <View key={i} style={styles.resultCard}>
-                    {/* Left: Info */}
+            {/* Main content */}
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+              {history.length === 0 ? (
+                EmptyState
+              ) : selectedItem ? (
+                <>
+                  <View style={styles.headerRow}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.resultName}>{r.name}</Text>
-                      <Text style={styles.resultConfidence}>
-                        Confidence: {(r.confidence * 100).toFixed(2)}%
+                      <Text style={styles.title}>Search Details</Text>
+                      <Text style={styles.date}>
+                        Performed on: {formatDate(selectedItem.createdDate)}
                       </Text>
-
-                      {!!r.url && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            navigation.navigate('MugshotWebView', { url: r.url })
-                          }
-                          style={{ marginTop: 6 }}
-                        >
-                          <Text style={styles.resultUrl}>View Profile</Text>
-                        </TouchableOpacity>
-                      )}
                     </View>
-
-                    {/* Right: Image */}
-                    {!!r.imageUrl && (
+                    {!!selectedItem.requestImage && (
                       <Image
-                        source={{ uri: r.imageUrl }}
-                        style={styles.resultImage}
-                        resizeMode="cover"
+                        source={{
+                          uri: `data:image/jpeg;base64,${selectedItem.requestImage}`,
+                        }}
+                        style={styles.requestThumb}
                       />
                     )}
                   </View>
-                ))}
-              </>
-            ) : (
-              <Text style={styles.message}>Select a search to view details</Text>
-            )}
-          </ScrollView>
+
+                  {selectedItem.results?.map((r, i) => (
+                    <View key={i} style={styles.resultCard}>
+                      {/* Left: Info */}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.resultName}>{r.name}</Text>
+                        <Text style={styles.resultConfidence}>
+                          Confidence: {(r.confidence * 100).toFixed(2)}%
+                        </Text>
+
+                        {!!r.url && (
+                          <TouchableOpacity
+                            onPress={() =>
+                              navigation.navigate('MugshotWebView', { url: r.url })
+                            }
+                            style={{ marginTop: 6 }}
+                          >
+                            <Text style={styles.resultUrl}>View Profile</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* Right: Image */}
+                      {!!r.imageUrl && (
+                        <Image
+                          source={{ uri: r.imageUrl }}
+                          style={styles.resultImage}
+                          resizeMode="cover"
+                        />
+                      )}
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.message}>Select a search to view details</Text>
+              )}
+            </ScrollView>
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </>
   );
 }
 
@@ -304,7 +308,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: SIDEBAR_WIDTH,
-    backgroundColor: '#0b62ff',
+    backgroundColor: '#007bff',
     borderRightWidth: 1,
     borderRightColor: 'rgba(255,255,255,0.15)',
   },
@@ -316,7 +320,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     width: SIDEBAR_WIDTH,
-    backgroundColor: '#0b62ff',
+    backgroundColor: '#007bff',
     zIndex: 30,
     elevation: 30,
   },
@@ -339,7 +343,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#0b62ff',
+    backgroundColor: '#007bff',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,

@@ -16,10 +16,11 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 import jwtDecode from 'jwt-decode';
-import { gql } from '@apollo/client';
+import { gql, useMutation } from '@apollo/client';
 import { client } from '../apollo/client';
 
-import { GET_PENDING_LOOKUPS, GET_USER_API_KEY } from '../graphql/mutations';
+import * as RNIap from 'react-native-iap';
+import { GET_PENDING_LOOKUPS, GET_USER_API_KEY, VERIFY_RECEIPT_MUTATION } from '../graphql/mutations';
 import { API_BASE_URL } from '../config';
 
 import Navbar from '../components/Navbar';
@@ -96,6 +97,7 @@ export default function HomeScreen() {
           resetToUpload();
           return true;
         }
+        // If on Home screen (upload state), exit app instead of going back
         BackHandler.exitApp();
         return true;
       };
@@ -185,19 +187,25 @@ export default function HomeScreen() {
 
   // fetch remaining attempts
   const fetchPending = useCallback(async () => {
-    const token = await AsyncStorage.getItem('accessToken');
-    const userId = await getUserId();
-    if (!token || !userId) {
-      setRemainingAttempts(null);
-      setAttemptsResetAt(null);
-      return;
+    let token = null;
+    let userId = null;
+
+    // Only fetch token/userId if user is actually logged in
+    if (user) {
+      token = await AsyncStorage.getItem('accessToken');
+      userId = await getUserId();
     }
+    
+    // Always fetch from backend (Logged in: by userId, Guest: by IP)
     try {
       const { data } = await client.query({
         query: GET_PENDING_LOOKUPS,
-        variables: { userId },
+        variables: { userId: userId || null },
         fetchPolicy: 'no-cache',
-        context: { headers: { authorization: `Bearer ${token}` } },
+        context: { 
+          headers: token ? { authorization: `Bearer ${token}` } : {},
+          skipAuth: !user, // Skip auth if user is not logged in (Guest mode)
+        },
       });
 
       if (__DEV__) {
@@ -212,7 +220,7 @@ export default function HomeScreen() {
       setRemainingAttempts(null);
       setAttemptsResetAt(null);
     }
-  }, [getUserId]);
+  }, [getUserId, user]);
 
   useFocusEffect(useCallback(() => { fetchPending(); }, [fetchPending]));
   useEffect(() => { if (state === 'upload') fetchPending(); }, [state, fetchPending]);
@@ -287,6 +295,12 @@ export default function HomeScreen() {
 
         flagsRef.current.haveResults = true;
 
+        // Mark guest trial as used
+        const userId = await getUserId();
+        if (!userId) {
+          await AsyncStorage.setItem('guestUsedTrial', 'true');
+        }
+
         if (flagsRef.current.subDone) {
           setState('results');
           unsubscribeStatus();
@@ -300,10 +314,18 @@ export default function HomeScreen() {
           (status === 401 || status === 403
             ? 'Please sign in to continue.'
             : 'Upload failed.');
-        if (
+            
+        const isLimitError = 
           msg.toLowerCase().includes('weekly free trial') ||
-          msg.toLowerCase().includes('weekly api hit limit exceeded')
-        ) {
+          msg.toLowerCase().includes('weekly api hit limit exceeded') ||
+          msg.toLowerCase().includes('free trial expired');
+
+        if (isLimitError) {
+          // If guest, mark as used locally so UI updates to 0
+          if (!user) {
+             await AsyncStorage.setItem('guestUsedTrial', 'true');
+             setRemainingAttempts(0);
+          }
           handleGraphQLErrors([{ message: msg }]);
         } else {
           Toast.show({ type: 'error', text1: `Server ${status}`, text2: msg });
@@ -313,7 +335,7 @@ export default function HomeScreen() {
         }
       }
     },
-    [unsubscribeStatus, resetToUpload, handleGraphQLErrors, fetchPending, uploadViaFetchGraphql]
+    [unsubscribeStatus, resetToUpload, handleGraphQLErrors, fetchPending, uploadViaFetchGraphql, user]
   );
 
   const ensureApiKey = useCallback(async () => {
@@ -392,13 +414,135 @@ export default function HomeScreen() {
     ],
   );
 
-  const openStripeCheckout = () => {
-    // Apple App Store compliance: No external payment links
-    // Direct users to website for account management
-    navigation.navigate('MugshotWebView', { 
-      url: 'https://app.safetycamai.com/', 
-      title: 'Manage Account' 
+  // --- IAP Logic ---
+  const [processingIAP, setProcessingIAP] = useState(false);
+  const [verifyReceipt] = useMutation(require('../graphql/mutations').VERIFY_RECEIPT_MUTATION);
+  const itemSkus = ['com.safetycamai.monthly'];
+
+  useEffect(() => {
+    let purchaseUpdateSubscription = null;
+    let purchaseErrorSubscription = null;
+
+    const initIAP = async () => {
+      try {
+        const RNIap = require('react-native-iap');
+        await RNIap.initConnection();
+        await RNIap.getSubscriptions({ skus: itemSkus });
+      } catch (err) {
+        console.warn('IAP Init Error:', err);
+      }
+    };
+
+    initIAP();
+
+    const RNIap = require('react-native-iap');
+    purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+      const receipt = purchase.transactionReceipt;
+      if (receipt) {
+        try {
+          setProcessingIAP(true);
+          const { data } = await verifyReceipt({ 
+            variables: { receipt } 
+          });
+
+          // Backend returns Boolean (true = success, false = failure)
+          if (data?.verifyApplePayment === true) {
+            await RNIap.finishTransaction({ purchase, isConsumable: false });
+            Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription active!' });
+            // Refresh user state or permissions here
+          }
+        } catch (error) {
+          console.error('Verification Error', error);
+          Toast.show({ type: 'error', text1: 'Error', text2: 'Receipt verification failed' });
+        } finally {
+          setProcessingIAP(false);
+        }
+      }
     });
+
+    purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
+      if (error.responseCode !== '2') { // User cancelled
+         console.warn('Purchase Error', error);
+         Toast.show({ type: 'error', text1: 'Purchase Failed', text2: error.message });
+      }
+      setProcessingIAP(false);
+    });
+
+    return () => {
+      if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
+      if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
+      RNIap.endConnection();
+    };
+  }, []);
+
+  const handleSubscribe = async () => {
+    // DEVELOPMENT MODE: Skip Apple IAP and send mock receipt to backend
+    if (__DEV__) {
+      console.log('🔧 DEV MODE: Simulating purchase and sending mock receipt to backend...');
+      try {
+        setProcessingIAP(true);
+        
+        // Create a mock receipt (base64 encoded string)
+        const mockReceipt = btoa(JSON.stringify({
+          productId: 'com.safetycamai.monthly',
+          transactionId: 'mock_' + Date.now(),
+          purchaseDate: new Date().toISOString(),
+          expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+          environment: 'development',
+          bundleId: 'org.reactjs.native.example.safetycamai'
+        }));
+
+        console.log('📤 Sending mock receipt to backend:', mockReceipt.substring(0, 50) + '...');
+        
+        // Send to backend
+        const { data } = await verifyReceipt({ 
+          variables: { receipt: mockReceipt } 
+        });
+
+        console.log('📥 Backend response:', data);
+
+        // Backend returns Boolean (true = success, false = failure)
+        if (data?.verifyApplePayment === true) {
+          console.log('✅ Backend accepted the receipt!');
+          Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription active! (Dev Mode)' });
+        } else {
+          console.warn('❌ Backend rejected the receipt');
+          Toast.show({ type: 'error', text1: 'Error', text2: 'Receipt verification failed' });
+        }
+      } catch (error) {
+        console.error('❌ Error sending to backend:', error);
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to verify receipt' });
+      } finally {
+        setProcessingIAP(false);
+      }
+      return;
+    }
+
+    // PRODUCTION MODE: Use real Apple IAP
+    try {
+      setProcessingIAP(true);
+      const RNIap = require('react-native-iap');
+      await RNIap.requestSubscription({ sku: itemSkus[0] });
+    } catch (err) {
+      console.warn(err.message);
+      setProcessingIAP(false);
+    }
+  };
+
+  const openStripeCheckout = async () => {
+    // Check if user is logged in
+    const token = await AsyncStorage.getItem('accessToken');
+    
+    if (!user || !token) {
+      // User is not logged in, set flag and navigate to login screen
+      console.log('User not logged in, navigating to AuthLogin...');
+      await AsyncStorage.setItem('redirectToSubscription', 'true');
+      navigation.navigate('AuthLogin');
+    } else {
+      // User is logged in, navigate to subscription screen
+      console.log('User logged in, navigating to Subscription...');
+      navigation.navigate('Subscription');
+    }
   };
 
   return (

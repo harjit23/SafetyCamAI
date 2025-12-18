@@ -12,15 +12,122 @@ import {
 import { useAlert } from '../context/AlertContext';
 import { useNavigation } from '@react-navigation/native';
 
-const AlertDialog = () => {
-  const navigation = useNavigation()
-  const { alertInfo, closeAlert } = useAlert();
+import * as RNIap from 'react-native-iap';
+import { useMutation } from '@apollo/client';
+import { VERIFY_RECEIPT_MUTATION } from '../graphql/mutations';
 
-  const upgradeNow = () => {
-    // Apple App Store compliance: No external payment links
-    // Users must visit website to manage subscription
-    Linking.openURL('https://app.safetycamai.com/');
-    closeAlert();
+const itemSkus = ['com.safetycamai.monthly']; // Product ID from App Store Connect
+
+const AlertDialog = () => {
+  const navigation = useNavigation();
+  const { alertInfo, closeAlert } = useAlert();
+  const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
+  const [processing, setProcessing] = React.useState(false);
+
+  React.useEffect(() => {
+    let purchaseUpdateSubscription = null;
+    let purchaseErrorSubscription = null;
+
+    const initIAP = async () => {
+      try {
+        await RNIap.initConnection();
+        await RNIap.getSubscriptions({ skus: itemSkus });
+      } catch (err) {
+        console.warn('IAP Init Error:', err);
+      }
+    };
+
+    if (alertInfo.isOpen) {
+      initIAP();
+
+      purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+        const receipt = purchase.transactionReceipt;
+        if (receipt) {
+          try {
+            setProcessing(true);
+            const { data } = await verifyReceipt({
+              variables: { receipt }
+            });
+
+            // Backend returns Boolean (true = success, false = failure)
+            if (data?.verifyApplePayment === true) {
+              await RNIap.finishTransaction({ purchase, isConsumable: false });
+              closeAlert();
+              // Optional: Show success message or refresh user state
+            } else {
+              console.warn('Receipt verification failed');
+            }
+          } catch (error) {
+            console.error('Verification Error', error);
+          } finally {
+            setProcessing(false);
+          }
+        }
+      });
+
+      purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
+        console.warn('Purchase Error', error);
+        setProcessing(false);
+      });
+    }
+
+    return () => {
+      if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
+      if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
+      RNIap.endConnection();
+    };
+  }, [alertInfo.isOpen]);
+
+  const upgradeNow = async () => {
+    // DEVELOPMENT MODE: Skip Apple IAP and send mock receipt to backend
+    if (__DEV__) {
+      console.log('🔧 DEV MODE: Simulating purchase and sending mock receipt to backend...');
+      try {
+        setProcessing(true);
+
+        // Create a mock receipt (base64 encoded string)
+        const mockReceipt = btoa(JSON.stringify({
+          productId: 'com.safetycamai.monthly',
+          transactionId: 'mock_' + Date.now(),
+          purchaseDate: new Date().toISOString(),
+          expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+          environment: 'development',
+          bundleId: 'org.reactjs.native.example.safetycamai'
+        }));
+
+        console.log('📤 Sending mock receipt to backend:', mockReceipt.substring(0, 50) + '...');
+
+        // Send to backend
+        const { data } = await verifyReceipt({
+          variables: { receipt: mockReceipt }
+        });
+
+        console.log('📥 Backend response:', data);
+
+        // Backend returns Boolean (true = success, false = failure)
+        if (data?.verifyApplePayment === true) {
+          console.log('✅ Backend accepted the receipt!');
+          closeAlert();
+          // Optional: Show success message
+        } else {
+          console.warn('❌ Backend rejected the receipt');
+        }
+      } catch (error) {
+        console.error('❌ Error sending to backend:', error);
+      } finally {
+        setProcessing(false);
+      }
+      return;
+    }
+
+    // PRODUCTION MODE: Use real Apple IAP
+    try {
+      setProcessing(true);
+      await RNIap.requestSubscription({ sku: itemSkus[0] });
+    } catch (err) {
+      console.warn(err.message);
+      setProcessing(false);
+    }
   };
 
   return (
@@ -31,22 +138,26 @@ const AlertDialog = () => {
             <View style={styles.card}>
               <Text style={styles.title}>Trial Feature Expired</Text>
               <Text style={styles.message}>
-                {alertInfo.msg}. Upgrade your account to continue enjoying advanced features and uninterrupted service.
+                {alertInfo.msg}. Upgrade to Premium for just $9.19/month to continue.
               </Text>
 
               <View style={styles.benefits}>
-                <Text style={styles.benefitsHeader}>What you'll get with premium:</Text>
-                <Text style={styles.benefitItem}>• Priority customer support</Text>
-                <Text style={styles.benefitItem}>• Advanced analytics and reporting</Text>
+                <Text style={styles.benefitsHeader}>Premium Benefits:</Text>
+                <Text style={styles.benefitItem}>• Unlimited Searches</Text>
+                <Text style={styles.benefitItem}>• Advanced Facial Recognition</Text>
+                <Text style={styles.benefitItem}>• Priority Support</Text>
               </View>
 
               <View style={styles.actions}>
-                <TouchableOpacity style={styles.upgradeButton} onPress={upgradeNow}>
-                  <Text style={styles.upgradeText}>Manage Account</Text>
+                <TouchableOpacity
+                  style={[styles.upgradeButton, processing && { opacity: 0.7 }]}
+                  onPress={upgradeNow}
+                  disabled={processing}
+                >
+                  <Text style={styles.upgradeText}>
+                    {processing ? 'Processing...' : 'Subscribe ($9.19/mo)'}
+                  </Text>
                 </TouchableOpacity>
-                {/* <TouchableOpacity style={styles.learnMoreButton} onPress={closeAlert}>
-                  <Text style={styles.learnMoreText}>Learn More</Text>
-                </TouchableOpacity> */}
               </View>
             </View>
           </TouchableWithoutFeedback>

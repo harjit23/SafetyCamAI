@@ -12,8 +12,8 @@ import { gql } from '@apollo/client';
 //   }
 // `;
 export const LOGIN_MUTATION = gql`
-  mutation ($email: String!, $password: String!) {
-    login(input: { email: $email, password: $password }) {
+  mutation ($email: String!, $password: String!, $rememberMe: Boolean) {
+    login(input: { email: $email, password: $password, rememberMe: $rememberMe }) {
       token {
         token
         refreshToken
@@ -130,6 +130,12 @@ export const DELETE_USER = gql`
 export const CONFIGURE_MFA = gql`
   mutation {
     configureTwoFactor
+  }
+`;
+
+export const VERIFY_RECEIPT_MUTATION = gql`
+  mutation verifyApplePayment($receipt: String!) {
+    verifyApplePayment(receipt: $receipt)
   }
 `;
 
