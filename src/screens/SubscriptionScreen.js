@@ -31,6 +31,7 @@ export default function SubscriptionScreen() {
     useEffect(() => {
         let purchaseUpdateSubscription = null;
         let purchaseErrorSubscription = null;
+        let isSubscribed = true; // Track if component is mounted
 
         // Clear the redirectToSubscription flag since we've reached the subscription screen
         // This prevents the flag from persisting and causing repeated redirects on future logins
@@ -39,27 +40,56 @@ export default function SubscriptionScreen() {
         const initIAP = async () => {
             try {
                 await RNIap.initConnection();
+                
+                // Clear any pending/unfinished transactions from previous sessions
+                // This prevents old transactions from triggering verification errors
+                try {
+                    const pendingPurchases = await RNIap.getAvailablePurchases();
+                    console.log('📦 Pending purchases found:', pendingPurchases?.length || 0);
+                    
+                    // Finish any pending transactions to clear them
+                    for (const purchase of pendingPurchases || []) {
+                        try {
+                            await RNIap.finishTransaction({ purchase, isConsumable: false });
+                            console.log('✅ Cleared pending transaction:', purchase.transactionId);
+                        } catch (finishErr) {
+                            console.warn('Failed to finish pending transaction:', finishErr);
+                        }
+                    }
+                } catch (pendingErr) {
+                    console.warn('Error checking pending purchases:', pendingErr);
+                }
+                
                 const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
                 console.log('📦 Available Products:', availableProducts);
                 if (availableProducts.length === 0) {
                     console.warn('⚠️ No products found. Check App Store Connect configuration.');
                 }
-                setProducts(availableProducts);
+                if (isSubscribed) {
+                    setProducts(availableProducts);
+                }
             } catch (err) {
                 console.warn('IAP Init Error:', err);
-                Toast.show({
-                    type: 'error',
-                    text1: 'Error',
-                    text2: 'Failed to load subscription options',
-                });
+                if (isSubscribed) {
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Error',
+                        text2: 'Failed to load subscription options',
+                    });
+                }
             }
         };
 
         initIAP();
 
-        // Listen for purchase updates
-        // Listen for purchase updates
+        // Listen for NEW purchase updates (triggered when user clicks Subscribe)
         purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+            // Only process if this is an active purchase (not a restored one during init)
+            if (!purchase || !purchase.transactionId) {
+                console.log('⚠️ Received empty or invalid purchase update, ignoring...');
+                return;
+            }
+
             let receipt = purchase.transactionReceipt;
 
             // Ensure we have a valid receipt for iOS
@@ -76,9 +106,15 @@ export default function SubscriptionScreen() {
                 // Real receipts are usually > 1000 chars
                 if (receipt.length < 100) {
                     console.warn('⚠️ Warning: Receipt seems too short to be valid!');
+                    // Finish the transaction to clear it, but don't verify
+                    try {
+                        await RNIap.finishTransaction({ purchase, isConsumable: false });
+                    } catch (e) {}
+                    return;
                 }
+                
                 try {
-                    setProcessing(true);
+                    if (isSubscribed) setProcessing(true);
                     console.log('📤 Sending receipt to backend for verification...');
 
                     const { data } = await verifyReceipt({
@@ -102,6 +138,11 @@ export default function SubscriptionScreen() {
                         }, 1500);
                     } else {
                         console.warn('❌ Backend rejected the receipt');
+                        // Finish the transaction anyway to clear it from the queue
+                        try {
+                            await RNIap.finishTransaction({ purchase, isConsumable: false });
+                        } catch (e) {}
+                        
                         Toast.show({
                             type: 'error',
                             text1: 'Verification Failed',
@@ -110,13 +151,18 @@ export default function SubscriptionScreen() {
                     }
                 } catch (error) {
                     console.error('❌ Error verifying receipt:', error);
+                    // Finish the transaction anyway to clear it
+                    try {
+                        await RNIap.finishTransaction({ purchase, isConsumable: false });
+                    } catch (e) {}
+                    
                     Toast.show({
                         type: 'error',
                         text1: 'Error',
                         text2: 'Failed to verify payment',
                     });
                 } finally {
-                    setProcessing(false);
+                    if (isSubscribed) setProcessing(false);
                 }
             }
         });
@@ -131,10 +177,11 @@ export default function SubscriptionScreen() {
                     text2: error.message || 'An error occurred',
                 });
             }
-            setProcessing(false);
+            if (isSubscribed) setProcessing(false);
         });
 
         return () => {
+            isSubscribed = false;
             if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
             if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
             RNIap.endConnection();
