@@ -6,10 +6,41 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
+  PermissionsAndroid,
+  Platform,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import ImagePicker from 'react-native-image-crop-picker';
 
 const PAGE_SIZE = 2;
+
+const requestCameraPerms = async () => {
+  if (Platform.OS !== 'android') return true;
+
+  const wants = [PermissionsAndroid.PERMISSIONS.CAMERA];
+
+  if (Platform.Version >= 33) {
+    wants.push(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES);
+  } else {
+    wants.push(
+      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+    );
+  }
+
+  const result = await PermissionsAndroid.requestMultiple(wants);
+  return Object.values(result).every(v => v === PermissionsAndroid.RESULTS.GRANTED);
+};
+
+const toPickedAsset = (img) => ({
+  uri: img.path?.startsWith('file://') ? img.path : `file://${img.path}`,
+  fileName: img.filename || (img.path?.split('/').pop() ?? 'photo.jpg'),
+  type: img.mime || 'image/jpeg',
+  width: img.width,
+  height: img.height,
+  size: img.size,
+});
 
 const isNoResultItem = (it) => {
   const n = (it?.name || '').toLowerCase();
@@ -39,6 +70,44 @@ const MatchList = ({ image, results = [], onSelectImage, onReset }) => {
     console.log('[MATCHLIST RESULTS]', JSON.stringify(results, null, 2));
   }, [results]);
 
+  // Handle opening camera
+  const handleOpenCamera = async () => {
+    const ok = await requestCameraPerms();
+    if (!ok) {
+      Alert.alert('Permission needed', 'Please allow camera/photos access to take a picture.');
+      return;
+    }
+
+    try {
+      const img = await ImagePicker.openCamera({
+        mediaType: 'photo',
+        cropping: true,
+        freeStyleCropEnabled: true,
+        compressImageQuality: 0.9,
+      });
+      const picked = toPickedAsset(img);
+      onSelectImage?.(picked);
+    } catch (e) {
+      console.log('openCamera error:', e?.message || e);
+    }
+  };
+
+  // Handle selecting image from gallery
+  const handleSelectImage = async () => {
+    try {
+      const img = await ImagePicker.openPicker({
+        mediaType: 'photo',
+        cropping: true,
+        freeStyleCropEnabled: true,
+        compressImageQuality: 0.9,
+      });
+      const picked = toPickedAsset(img);
+      onSelectImage?.(picked);
+    } catch (e) {
+      console.log('openPicker error:', e?.message || e);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.wrapper}>
       {/* Uploaded Image */}
@@ -49,6 +118,20 @@ const MatchList = ({ image, results = [], onSelectImage, onReset }) => {
         ) : (
           <View style={[styles.criminalImage, styles.placeholderBox]}>
             <Text style={styles.placeholderText}>No image</Text>
+          </View>
+        )}
+        
+        {/* Change Image / Open Camera Links */}
+        {onSelectImage && (
+          <View style={styles.changeImageContainer}>
+            <Text style={styles.changeTextPrefix}>Click here to </Text>
+            <TouchableOpacity onPress={handleSelectImage}>
+              <Text style={styles.changeTextLink}>Change image</Text>
+            </TouchableOpacity>
+            <Text style={styles.changeTextPrefix}> or </Text>
+            <TouchableOpacity onPress={handleOpenCamera}>
+              <Text style={styles.changeTextLink}>Open Camera</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -155,6 +238,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center',
   },
   placeholderText: { color: '#667', fontSize: 12 },
+  changeImageContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  changeTextPrefix: {
+    fontSize: 12,
+    color: '#555',
+  },
+  changeTextLink: {
+    fontSize: 12,
+    color: '#007bff',
+    fontWeight: 'bold',
+  },
 
   container: { backgroundColor: '#fff', borderRadius: 16, padding: 16, margin: 16, width: '100%' },
   title: { fontSize: 20, fontWeight: '700', color: '#007bff', textAlign: 'center', marginBottom: 20 },

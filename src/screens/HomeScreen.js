@@ -565,7 +565,11 @@ export default function HomeScreen() {
           )}
 
           {state === 'verifying' && (
-            <DetectionSteps image={image} currentStatus={trackingMessage || 'Uploading image…'} />
+            <DetectionSteps 
+              image={image} 
+              currentStatus={trackingMessage || 'Uploading image…'} 
+              onChangeImage={handleImageSelect}
+            />
           )}
 
           {state === 'results' && (

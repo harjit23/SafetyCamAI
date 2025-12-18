@@ -16,6 +16,7 @@ import Toast from 'react-native-toast-message';
 import * as RNIap from 'react-native-iap';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { VERIFY_RECEIPT_MUTATION } from '../graphql/mutations';
 
@@ -30,6 +31,10 @@ export default function SubscriptionScreen() {
     useEffect(() => {
         let purchaseUpdateSubscription = null;
         let purchaseErrorSubscription = null;
+
+        // Clear the redirectToSubscription flag since we've reached the subscription screen
+        // This prevents the flag from persisting and causing repeated redirects on future logins
+        AsyncStorage.removeItem('redirectToSubscription').catch(() => {});
 
         const initIAP = async () => {
             try {
