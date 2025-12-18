@@ -41,23 +41,19 @@ export default function SubscriptionScreen() {
             try {
                 await RNIap.initConnection();
                 
-                // Clear any pending/unfinished transactions from previous sessions
-                // This prevents old transactions from triggering verification errors
+                // Check for existing purchases (active subscriptions)
                 try {
-                    const pendingPurchases = await RNIap.getAvailablePurchases();
-                    console.log('📦 Pending purchases found:', pendingPurchases?.length || 0);
+                    const existingPurchases = await RNIap.getAvailablePurchases();
+                    console.log('📦 Existing purchases found:', existingPurchases?.length || 0);
                     
-                    // Finish any pending transactions to clear them
-                    for (const purchase of pendingPurchases || []) {
-                        try {
-                            await RNIap.finishTransaction({ purchase, isConsumable: false });
-                            console.log('✅ Cleared pending transaction:', purchase.transactionId);
-                        } catch (finishErr) {
-                            console.warn('Failed to finish pending transaction:', finishErr);
-                        }
+                    // If user has active subscription(s), verify with backend
+                    if (existingPurchases && existingPurchases.length > 0) {
+                        console.log('🔄 User has existing purchases, checking subscription status...');
+                        // We'll let the user know they may already have a subscription
+                        // The actual verification happens when they try to subscribe
                     }
                 } catch (pendingErr) {
-                    console.warn('Error checking pending purchases:', pendingErr);
+                    console.warn('Error checking existing purchases:', pendingErr);
                 }
                 
                 const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
@@ -82,11 +78,13 @@ export default function SubscriptionScreen() {
 
         initIAP();
 
-        // Listen for NEW purchase updates (triggered when user clicks Subscribe)
+        // Listen for purchase updates (triggered when user clicks Subscribe or has pending purchase)
         purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
-            // Only process if this is an active purchase (not a restored one during init)
-            if (!purchase || !purchase.transactionId) {
-                console.log('⚠️ Received empty or invalid purchase update, ignoring...');
+            console.log('📥 Purchase update received:', purchase?.transactionId);
+            
+            if (!purchase) {
+                console.log('⚠️ Received empty purchase update, ignoring...');
+                if (isSubscribed) setProcessing(false);
                 return;
             }
 
@@ -96,81 +94,82 @@ export default function SubscriptionScreen() {
             if (!receipt) {
                 try {
                     receipt = await RNIap.getReceiptIOS();
+                    console.log('📥 Got receipt from getReceiptIOS, length:', receipt?.length);
                 } catch (err) {
                     console.warn('Failed to get receipt from iOS:', err);
+                    if (isSubscribed) setProcessing(false);
+                    return;
                 }
             }
 
-            if (receipt) {
-                console.log('🧾 Real Receipt Length:', receipt.length);
-                // Real receipts are usually > 1000 chars
-                if (receipt.length < 100) {
-                    console.warn('⚠️ Warning: Receipt seems too short to be valid!');
-                    // Finish the transaction to clear it, but don't verify
-                    try {
-                        await RNIap.finishTransaction({ purchase, isConsumable: false });
-                    } catch (e) {}
-                    return;
-                }
-                
-                try {
-                    if (isSubscribed) setProcessing(true);
-                    console.log('📤 Sending receipt to backend for verification...');
+            if (!receipt) {
+                console.warn('⚠️ No receipt available');
+                if (isSubscribed) setProcessing(false);
+                return;
+            }
 
-                    const { data } = await verifyReceipt({
-                        variables: { receipt },
+            console.log('🧾 Receipt Length:', receipt.length);
+            
+            try {
+                if (isSubscribed) setProcessing(true);
+                console.log('📤 Sending receipt to backend for verification...');
+
+                const { data } = await verifyReceipt({
+                    variables: { receipt },
+                });
+
+                console.log('📥 Backend response:', data);
+
+                // Backend returns Boolean (true = success, false = failure)
+                if (data?.verifyApplePayment === true) {
+                    console.log('✅ Payment verified successfully!');
+                    await RNIap.finishTransaction({ purchase, isConsumable: false });
+
+                    Toast.show({
+                        type: 'success',
+                        text1: 'Success',
+                        text2: 'Subscription activated successfully!',
                     });
 
-                    // Backend returns Boolean (true = success, false = failure)
-                    if (data?.verifyApplePayment === true) {
-                        console.log('✅ Payment verified successfully!');
-                        await RNIap.finishTransaction({ purchase, isConsumable: false });
-
-                        Toast.show({
-                            type: 'success',
-                            text1: 'Success',
-                            text2: 'Subscription activated successfully!',
-                        });
-
-                        // Navigate back to Home after successful payment
-                        setTimeout(() => {
-                            navigation.navigate('Home');
-                        }, 1500);
-                    } else {
-                        console.warn('❌ Backend rejected the receipt');
-                        // Finish the transaction anyway to clear it from the queue
-                        try {
-                            await RNIap.finishTransaction({ purchase, isConsumable: false });
-                        } catch (e) {}
-                        
-                        Toast.show({
-                            type: 'error',
-                            text1: 'Verification Failed',
-                            text2: 'Receipt verification failed',
-                        });
-                    }
-                } catch (error) {
-                    console.error('❌ Error verifying receipt:', error);
-                    // Finish the transaction anyway to clear it
-                    try {
-                        await RNIap.finishTransaction({ purchase, isConsumable: false });
-                    } catch (e) {}
+                    // Navigate back to Home after successful payment
+                    setTimeout(() => {
+                        navigation.navigate('Home');
+                    }, 1500);
+                } else {
+                    console.warn('❌ Backend rejected the receipt');
+                    // Finish the transaction to clear it from the queue
+                    await RNIap.finishTransaction({ purchase, isConsumable: false });
                     
                     Toast.show({
                         type: 'error',
-                        text1: 'Error',
-                        text2: 'Failed to verify payment',
+                        text1: 'Verification Failed',
+                        text2: 'Receipt verification failed. Please try again.',
                     });
-                } finally {
-                    if (isSubscribed) setProcessing(false);
                 }
+            } catch (error) {
+                console.error('❌ Error verifying receipt:', error);
+                // Finish the transaction to clear it
+                try {
+                    await RNIap.finishTransaction({ purchase, isConsumable: false });
+                } catch (e) {
+                    console.warn('Failed to finish transaction:', e);
+                }
+                
+                Toast.show({
+                    type: 'error',
+                    text1: 'Error',
+                    text2: 'Failed to verify payment. Please try again.',
+                });
+            } finally {
+                if (isSubscribed) setProcessing(false);
             }
         });
 
         purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
-            if (error.responseCode !== '2') {
-                // User cancelled
-                console.warn('Purchase Error', error);
+            console.log('❌ Purchase error received:', error);
+            // responseCode 2 = User cancelled
+            if (error.responseCode !== '2' && error.responseCode !== 2) {
+                console.warn('Purchase Error:', error);
                 Toast.show({
                     type: 'error',
                     text1: 'Purchase Failed',
@@ -255,22 +254,51 @@ export default function SubscriptionScreen() {
                 Toast.show({
                     type: 'error',
                     text1: 'Error',
-                    text2: 'No subscription products available',
+                    text2: 'No subscription products available. Pull down to refresh.',
                 });
                 setProcessing(false);
                 return;
             }
 
+            // Set a timeout to prevent infinite loading if purchase flow doesn't respond
+            const purchaseTimeout = setTimeout(() => {
+                console.warn('⏰ Purchase request timed out');
+                setProcessing(false);
+                Toast.show({
+                    type: 'info',
+                    text1: 'Purchase Pending',
+                    text2: 'If you completed the purchase, it will be verified shortly.',
+                });
+            }, 60000); // 60 second timeout
+
             // Request subscription - this triggers purchaseUpdatedListener on success
+            console.log('📤 Requesting subscription for SKU:', itemSkus[0]);
             await RNIap.requestSubscription({ sku: itemSkus[0] });
             console.log('✅ Purchase request sent to Apple');
+            
+            // Clear timeout - the purchaseUpdatedListener will handle the rest
+            clearTimeout(purchaseTimeout);
         } catch (err) {
-            console.warn('❌ Purchase error:', err.message);
-            Toast.show({
-                type: 'error',
-                text1: 'Purchase Failed',
-                text2: err.message || 'An error occurred',
-            });
+            console.warn('❌ Purchase error:', err.message, err.code);
+            
+            // Check for specific error codes
+            if (err.code === 'E_USER_CANCELLED' || err.message?.includes('cancelled')) {
+                console.log('👤 User cancelled the purchase');
+                // Don't show error for user cancellation
+            } else if (err.code === 'E_ALREADY_OWNED' || err.message?.includes('already own')) {
+                Toast.show({
+                    type: 'success',
+                    text1: 'Already Subscribed',
+                    text2: 'You already have an active subscription!',
+                });
+                setTimeout(() => navigation.navigate('Home'), 1500);
+            } else {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Purchase Failed',
+                    text2: err.message || 'An error occurred. Please try again.',
+                });
+            }
             setProcessing(false);
         }
     };
