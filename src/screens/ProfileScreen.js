@@ -32,12 +32,34 @@ const ProfileScreen = () => {
   // Fetch user details: Try GET_ME first, fallback to Token Decode
   const { data: userData, loading, error, refetch } = useQuery(GET_ME, {
     fetchPolicy: 'network-only',
-    onCompleted: (data) => {
+    onCompleted: async (data) => {
       console.log('👤 GET_ME Query Response:', JSON.stringify(data, null, 2));
       if (data?.me) {
         console.log('👤 User Profile Data:', data.me);
         console.log('👤 Linked Accounts:', data.me.linked_accounts);
-        setUserProfile(data.me);
+        
+        // Get payment info from token (GET_ME doesn't return payment info)
+        let paymentInfo = {};
+        try {
+          const token = await AsyncStorage.getItem('accessToken');
+          if (token) {
+            const decoded = jwtDecode(token);
+            paymentInfo = {
+              paymentPlan: decoded.paymentPlan,
+              paymentDate: decoded.paymentDate,
+              paymentExpiryDate: decoded.paymentExpiryDate,
+            };
+            console.log('👤 Payment info from token:', paymentInfo);
+          }
+        } catch (e) {
+          console.warn('Failed to get payment info from token:', e);
+        }
+        
+        // Merge GET_ME data with payment info from token
+        setUserProfile(prev => ({
+          ...data.me,
+          ...paymentInfo,
+        }));
       }
     },
     onError: async (err) => {
@@ -52,7 +74,10 @@ const ProfileScreen = () => {
             name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
             email: decoded.email || decoded.upn || 'No Email',
             id: decoded.id || decoded.sub,
-            linked_accounts: decoded.linked_accounts, // Extract from JWT
+            linked_accounts: decoded.linked_accounts,
+            paymentPlan: decoded.paymentPlan,
+            paymentDate: decoded.paymentDate,
+            paymentExpiryDate: decoded.paymentExpiryDate,
           });
         }
       } catch (e) {
@@ -209,8 +234,15 @@ const ProfileScreen = () => {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Subscription Status</Text>
             
+            {/* Debug info - remove in production */}
+            {__DEV__ && (
+              <Text style={{ fontSize: 10, color: '#999', marginBottom: 8 }}>
+                Debug: paymentPlan = {userProfile?.paymentPlan || 'null'}
+              </Text>
+            )}
+            
             {userProfile?.paymentPlan ? (
-              // User has a subscription (Pro)
+              // User has a subscription (Premium)
               <>
                 <View style={styles.proBadgeContainer}>
                   <View style={styles.proBadge}>
@@ -223,26 +255,32 @@ const ProfileScreen = () => {
                   <View style={styles.subscriptionRow}>
                     <Text style={styles.subscriptionLabel}>Plan</Text>
                     <Text style={styles.subscriptionValue}>
-                      {userProfile.paymentPlan.includes('Monthly') ? 'Monthly' : userProfile.paymentPlan}
+                      {userProfile.paymentPlan.includes('Monthly') ? 'Monthly' : 'Premium'}
                     </Text>
                   </View>
                   {userProfile.paymentExpiryDate && (
-                    <View style={styles.subscriptionRow}>
+                    <View style={[styles.subscriptionRow, { borderBottomWidth: 0 }]}>
                       <Text style={styles.subscriptionLabel}>Expires</Text>
                       <Text style={styles.subscriptionValue}>
-                        {new Date(userProfile.paymentExpiryDate).toLocaleDateString()}
+                        {(() => {
+                          try {
+                            // Handle date format: "12/19/2025 5:50:04 AM +00:00"
+                            const dateStr = userProfile.paymentExpiryDate;
+                            const date = new Date(dateStr);
+                            if (isNaN(date.getTime())) {
+                              // Fallback: extract just the date part
+                              const parts = dateStr.split(' ');
+                              return parts[0] || dateStr;
+                            }
+                            return date.toLocaleDateString();
+                          } catch (e) {
+                            return userProfile.paymentExpiryDate;
+                          }
+                        })()}
                       </Text>
                     </View>
                   )}
                 </View>
-
-                <TouchableOpacity
-                  style={styles.manageButton}
-                  onPress={() => navigation.navigate('Subscription')}
-                >
-                  <Icon name="cog" size={16} color="#007bff" style={{ marginRight: 8 }} />
-                  <Text style={styles.manageButtonText}>Manage Subscription</Text>
-                </TouchableOpacity>
               </>
             ) : (
               // User is on Free plan
