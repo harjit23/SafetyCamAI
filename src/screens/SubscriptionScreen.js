@@ -8,6 +8,7 @@ import {
     ActivityIndicator,
     ScrollView,
     StatusBar,
+    Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -303,6 +304,37 @@ export default function SubscriptionScreen() {
         }
     };
 
+    // Handle Stripe payment - opens external browser (Safari)
+    const handleStripePayment = async () => {
+        // Replace this URL with your actual Stripe payment page
+        const STRIPE_PAYMENT_URL = 'https://your-website.com/subscribe';
+        
+        try {
+            const canOpen = await Linking.canOpenURL(STRIPE_PAYMENT_URL);
+            if (canOpen) {
+                await Linking.openURL(STRIPE_PAYMENT_URL);
+            } else {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Error',
+                    text2: 'Unable to open payment page',
+                });
+            }
+        } catch (error) {
+            console.error('Error opening Stripe URL:', error);
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to open payment page',
+            });
+        }
+    };
+
+    // Handle cancel
+    const handleCancel = () => {
+        navigation.goBack();
+    };
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
             <StatusBar barStyle="light-content" backgroundColor="#007bff" />
@@ -352,28 +384,55 @@ export default function SubscriptionScreen() {
                                 {products.length > 0 ? (
                                     <Text style={styles.price}>{products[0].localizedPrice}</Text>
                                 ) : (
-                                    <ActivityIndicator size="small" color="#0C66E4" />
+                                    <Text style={styles.price}>$9.99</Text>
                                 )}
                                 <Text style={styles.pricePeriod}>per month</Text>
                             </View>
 
-                            {/* Subscribe Button */}
-                            <TouchableOpacity
-                                style={[styles.subscribeButton, processing && { opacity: 0.7 }]}
-                                onPress={handleSubscribe}
-                                disabled={processing}
-                            >
-                                {processing ? (
-                                    <ActivityIndicator color="#fff" />
-                                ) : (
-                                    <Text style={styles.subscribeText}>Subscribe Now</Text>
-                                )}
-                            </TouchableOpacity>
+                            {/* Payment Options */}
+                            <View style={styles.paymentOptionsContainer}>
+                                <Text style={styles.paymentOptionsTitle}>Choose Payment Method</Text>
+
+                                {/* Apple Pay Button */}
+                                <TouchableOpacity
+                                    style={[styles.applePayButton, processing && { opacity: 0.7 }]}
+                                    onPress={handleSubscribe}
+                                    disabled={processing}
+                                >
+                                    {processing ? (
+                                        <ActivityIndicator color="#fff" />
+                                    ) : (
+                                        <View style={styles.buttonContent}>
+                                            <Icon name="apple" size={22} color="#fff" />
+                                            <Text style={styles.applePayText}>Pay with Apple</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+
+                                {/* Stripe Button - Opens in Safari */}
+                                <TouchableOpacity
+                                    style={styles.stripeButton}
+                                    onPress={handleStripePayment}
+                                >
+                                    <View style={styles.buttonContent}>
+                                        <Icon name="credit-card" size={20} color="#fff" />
+                                        <Text style={styles.stripeText}>Pay with Card</Text>
+                                    </View>
+                                </TouchableOpacity>
+
+                                {/* Cancel Button */}
+                                <TouchableOpacity
+                                    style={styles.cancelButton}
+                                    onPress={handleCancel}
+                                >
+                                    <Text style={styles.cancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                            </View>
 
                             {/* Terms */}
                             <Text style={styles.terms}>
                                 Subscription automatically renews unless cancelled 24 hours before the
-                                end of the current period.
+                                end of the current period. By subscribing, you agree to our Terms of Service.
                             </Text>
                         </View>
                     </View>
@@ -480,5 +539,61 @@ const styles = StyleSheet.create({
         color: '#999',
         textAlign: 'center',
         lineHeight: 18,
+        marginTop: 16,
+    },
+    // Payment Options Styles
+    paymentOptionsContainer: {
+        marginTop: 8,
+    },
+    paymentOptionsTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+    buttonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    applePayButton: {
+        backgroundColor: '#000',
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    applePayText: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '700',
+        marginLeft: 10,
+    },
+    stripeButton: {
+        backgroundColor: '#635BFF',
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    stripeText: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '700',
+        marginLeft: 10,
+    },
+    cancelButton: {
+        backgroundColor: 'transparent',
+        paddingVertical: 14,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        alignItems: 'center',
+    },
+    cancelText: {
+        color: '#666',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

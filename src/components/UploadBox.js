@@ -79,7 +79,7 @@ const UploadBox = ({ onUpload }) => {
 
   return (
     <View style={styles.uploadBox}>
-      <Text style={styles.uploadTitle}>Upload Criminal Image</Text>
+      <Text style={styles.uploadTitle}>Upload Image</Text>
 
       <View style={styles.noteBox}>
         <Text style={styles.noteTitle}>Note: Upload a Clear Photo</Text>

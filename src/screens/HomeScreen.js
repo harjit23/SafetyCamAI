@@ -441,9 +441,9 @@ export default function HomeScreen() {
       <LinearGradient colors={['#007bff', '#69bfff']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <StatusBar barStyle="light-content" backgroundColor="#007bff" />
-          <Text style={styles.heading}>Find Criminals. Stay Aware. Stay Safe.</Text>
+          <Text style={styles.heading}>Explore Publicly Available Look-Alike Images.</Text>
           <Text style={styles.subHeading}>
-            Easily search billions of records — from most-wanted fugitives to petty thieves.
+            Upload a photo to discover visually similar images found on publicly accessible websites
           </Text>
 
           {(!image || state === 'upload') && <UploadBox onUpload={handleImageSelect} />}
