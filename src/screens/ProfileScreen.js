@@ -82,7 +82,11 @@ const ProfileScreen = () => {
             name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
             email: decoded.email || decoded.upn || prev.email,
             id: decoded.id || decoded.sub || prev.id,
-            linked_accounts: decoded.linked_accounts || prev.linked_accounts, // Extract from JWT
+            linked_accounts: decoded.linked_accounts || prev.linked_accounts,
+            // Payment/Subscription info from token
+            paymentPlan: decoded.paymentPlan || prev.paymentPlan,
+            paymentDate: decoded.paymentDate || prev.paymentDate,
+            paymentExpiryDate: decoded.paymentExpiryDate || prev.paymentExpiryDate,
           }));
         }
       } catch (e) {
@@ -199,6 +203,69 @@ const ProfileScreen = () => {
                 <Text style={styles.value}>{userProfile?.email || '...'}</Text>
               </View>
             </View>
+          </View>
+
+          {/* Subscription Status */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Subscription Status</Text>
+            
+            {userProfile?.paymentPlan ? (
+              // User has a subscription (Pro)
+              <>
+                <View style={styles.proBadgeContainer}>
+                  <View style={styles.proBadge}>
+                    <Icon name="star" size={16} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.proBadgeText}>Premium</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.subscriptionDetails}>
+                  <View style={styles.subscriptionRow}>
+                    <Text style={styles.subscriptionLabel}>Plan</Text>
+                    <Text style={styles.subscriptionValue}>
+                      {userProfile.paymentPlan.includes('Monthly') ? 'Monthly' : userProfile.paymentPlan}
+                    </Text>
+                  </View>
+                  {userProfile.paymentExpiryDate && (
+                    <View style={styles.subscriptionRow}>
+                      <Text style={styles.subscriptionLabel}>Expires</Text>
+                      <Text style={styles.subscriptionValue}>
+                        {new Date(userProfile.paymentExpiryDate).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.manageButton}
+                  onPress={() => navigation.navigate('Subscription')}
+                >
+                  <Icon name="cog" size={16} color="#007bff" style={{ marginRight: 8 }} />
+                  <Text style={styles.manageButtonText}>Manage Subscription</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              // User is on Free plan
+              <>
+                <View style={styles.freeBadgeContainer}>
+                  <View style={styles.freeBadge}>
+                    <Text style={styles.freeBadgeText}>Free Plan</Text>
+                  </View>
+                </View>
+                
+                <Text style={styles.freeDescription}>
+                  Upgrade to Premium for unlimited searches and advanced features.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.upgradeButton}
+                  onPress={() => navigation.navigate('Subscription')}
+                >
+                  <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
 
           {/* Linked Accounts */}
@@ -439,6 +506,100 @@ const styles = StyleSheet.create({
   linkButtonSmallText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  // Subscription Status Styles
+  proBadgeContainer: {
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f59e0b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  proBadgeText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  freeBadgeContainer: {
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  freeBadge: {
+    backgroundColor: '#e5e7eb',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  freeBadgeText: {
+    color: '#6b7280',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  freeDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  subscriptionDetails: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  subscriptionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  subscriptionLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  subscriptionValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  upgradeButton: {
+    flexDirection: 'row',
+    backgroundColor: '#007bff',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upgradeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  manageButton: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#007bff',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manageButtonText: {
+    color: '#007bff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
