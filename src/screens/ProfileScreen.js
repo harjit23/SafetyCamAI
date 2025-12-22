@@ -19,14 +19,100 @@ import Toast from 'react-native-toast-message';
 
 import { useAuth } from '../context/AuthContext';
 import { jwtDecode } from 'jwt-decode';
-import { DELETE_USER, GET_ME } from '../graphql/mutations'; // Imported GET_ME
+import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION } from '../graphql/mutations'; // Imported GET_ME and VERIFY_RECEIPT_MUTATION
 import { client } from '../apollo/client';
 import Navbar from '../components/Navbar';
+import { Platform } from 'react-native';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const { logout } = useAuth();
   const [deleteUser] = useMutation(DELETE_USER);
+  const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
+  const itemSkus = ['com.safetycamai.monthly'];
+
+  // Handle Restore Purchase
+  const handleRestorePurchase = async () => {
+    try {
+      Toast.show({ type: 'info', text1: 'Restoring...', text2: 'Checking for previous purchases' });
+      const RNIap = require('react-native-iap');
+      await RNIap.initConnection();
+
+      const availablePurchases = await RNIap.getAvailablePurchases();
+      console.log('📦 Available purchases for restore:', availablePurchases?.length || 0);
+
+      if (!availablePurchases || availablePurchases.length === 0) {
+        Toast.show({
+          type: 'info',
+          text1: 'No Purchases Found',
+          text2: 'We couldn\'t find any active subscriptions to restore.',
+        });
+        await RNIap.endConnection();
+        return;
+      }
+
+      // Find the most recent valid purchase for our SKU
+      const validPurchase = availablePurchases
+        .filter(p => itemSkus.includes(p.productId))
+        .sort((a, b) => b.transactionDate - a.transactionDate)[0];
+
+      if (!validPurchase) {
+        Toast.show({
+          type: 'info',
+          text1: 'No Valid Subscription',
+          text2: 'No active SafetyCam AI subscription found.',
+        });
+        await RNIap.endConnection();
+        return;
+      }
+
+      console.log('🧾 Found valid purchase to restore:', validPurchase.transactionId);
+
+      let receipt = validPurchase.transactionReceipt;
+      if (Platform.OS === 'ios' && !receipt) {
+        try {
+          receipt = await RNIap.getReceiptIOS();
+        } catch (err) {
+          console.warn('Failed to get receipt from iOS during restore:', err);
+        }
+      }
+
+      if (!receipt) {
+        throw new Error('Could not retrieve purchase receipt');
+      }
+
+      console.log('📤 Sending restored receipt to backend...');
+      const { data } = await verifyReceipt({
+        variables: { receipt },
+      });
+
+      if (data?.verifyApplePayment === true) {
+        console.log('✅ Restore successful!');
+        Toast.show({
+          type: 'success',
+          text1: 'Restore Successful',
+          text2: 'Your premium access has been restored.',
+        });
+        // Refetch user data to update UI
+        refetch();
+      } else {
+        console.warn('❌ Backend rejected the restored receipt');
+        Toast.show({
+          type: 'error',
+          text1: 'Restore Failed',
+          text2: 'We found a purchase, but verification failed.',
+        });
+      }
+      await RNIap.endConnection();
+    } catch (err) {
+      console.warn('❌ Restore error:', err);
+      Toast.show({
+        type: 'error',
+        text1: 'Restore Error',
+        text2: err.message || 'An error occurred while restoring.',
+      });
+    }
+  };
 
   // Initialize with empty state, but we'll fill it from token immediately
   const [userProfile, setUserProfile] = useState({
@@ -305,6 +391,13 @@ const ProfileScreen = () => {
                 >
                   <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.restoreButtonSmall}
+                  onPress={handleRestorePurchase}
+                >
+                  <Text style={styles.restoreButtonSmallText}>Restore Purchase</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -643,6 +736,17 @@ const styles = StyleSheet.create({
     color: '#007bff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  restoreButtonSmall: {
+    marginTop: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  restoreButtonSmallText: {
+    color: '#007bff',
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
   },
 });
 

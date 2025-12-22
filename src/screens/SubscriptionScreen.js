@@ -88,7 +88,7 @@ export default function SubscriptionScreen() {
                 if (isSubscribed) setProcessing(false);
                 return;
             }
-
+                 
             let receipt = purchase.transactionReceipt;
 
             // Ensure we have a valid receipt for iOS
@@ -135,7 +135,7 @@ export default function SubscriptionScreen() {
                     // Navigate back to Home after successful payment
                     setTimeout(() => {
                         navigation.navigate('Home');
-                    }, 1500);
+        }, 1500);
                 } else {
                     console.warn('❌ Backend rejected the receipt');
                     // Finish the transaction to clear it from the queue
@@ -300,300 +300,400 @@ export default function SubscriptionScreen() {
                     text2: err.message || 'An error occurred. Please try again.',
                 });
             }
-            setProcessing(false);
-        }
-    };
+            // Handle Restore Purchase
+            const handleRestorePurchase = async () => {
+                try {
+                    setProcessing(true);
+                    console.log('🔄 Attempting to restore purchases...');
 
-    // Handle Stripe payment - opens external browser (Safari)
-    const handleStripePayment = async () => {
-        // Replace this URL with your actual Stripe payment page
-        const STRIPE_PAYMENT_URL = 'https://safetycamai.com';
+                    const availablePurchases = await RNIap.getAvailablePurchases();
+                    console.log('📦 Available purchases for restore:', availablePurchases?.length || 0);
 
-        try {
-            const canOpen = await Linking.canOpenURL(STRIPE_PAYMENT_URL);
-            if (canOpen) {
-                await Linking.openURL(STRIPE_PAYMENT_URL);
-            } else {
-                Toast.show({
-                    type: 'error',
-                    text1: 'Error',
-                    text2: 'Unable to open payment page',
-                });
+                    if (!availablePurchases || availablePurchases.length === 0) {
+                        Toast.show({
+                            type: 'info',
+                            text1: 'No Purchases Found',
+                            text2: 'We couldn\'t find any active subscriptions to restore.',
+                        });
+                        setProcessing(false);
+                        return;
+                    }
+
+                    // Find the most recent valid purchase for our SKU
+                    const validPurchase = availablePurchases
+                        .filter(p => itemSkus.includes(p.productId))
+                        .sort((a, b) => b.transactionDate - a.transactionDate)[0];
+
+                    if (!validPurchase) {
+                        Toast.show({
+                            type: 'info',
+                            text1: 'No Valid Subscription',
+                            text2: 'No active SafetyCam AI subscription found.',
+                        });
+                        setProcessing(false);
+                        return;
+                    }
+ 
+        console.log('🧾 Found valid purchase to restore:', validPurchase.transactionId);
+
+        // Get receipt for iOS if needed
+        let receipt = validPurchase.transactionReceipt;
+            if (Platform.OS === 'ios' && !receipt) {
+                    try {
+                            receipt = await RNIap.getReceiptIOS();
+            } catch (err) {
+                console.warn('Failed to get receipt from iOS during restore:', err);
+                }
+                }
+
+        if (!receipt) {
+            throw new Error('Could not retrieve purchase receipt');
             }
-        } catch (error) {
-            console.error('Error opening Stripe URL:', error);
+            
+                    console.log('📤 Sending restored receipt to backend...');
+                        const { data } = await verifyReceipt({
+                        variables: { receipt },
+        });
+    
+            if (data?.verifyApplePayment === true) {
+                    console.log('✅ Restore successful!');
+                        Toast.show({
+                type: 'success',
+                text1: 'Restore Successful',
+                    text2: 'Your premium access has been restored.',
+                    });
+                        setTimeout(() => navigation.navigate('Home'), 1500);
+                        } else {
+                        console.warn('❌ Backend rejected the restored receipt');
             Toast.show({
                 type: 'error',
-                text1: 'Error',
-                text2: 'Failed to open payment page',
+                text1: 'Restore Failed',
+                            text2: 'We found a purchase, but verification failed.',
             });
         }
-    };
+        } catch (err) {
+                console.warn('❌ Restore error:', err);
+                    Toast.show({
+                            type: 'error',
+                        text1: 'Restore Error',
+            text2: err.message || 'An error occurred while restoring.',
+        });
+        } finally {
+                setProcessing(false);
+                }
+};
+    
+        andle Stripe payment - opens external browser (Safari)
+            t handleStripePayment = async () => {
+                // Replace this URL with your actual Stripe payment page
+                    const STRIPE_PAYMENT_URL = 'https://safetycamai.com';
 
-    // Handle cancel
-    const handleCancel = () => {
-        navigation.goBack();
-    };
-
-    return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
-            <StatusBar barStyle="light-content" backgroundColor="#007bff" />
+    try {
+        const canOpen = await Linking.canOpenURL(STRIPE_PAYMENT_URL);
+            if (canOpen) {
+                    await Linking.openURL(STRIPE_PAYMENT_URL);
+                    } else {
+                        Toast.show({
+                type: 'error',
+                text1: 'Error',
+                    text2: 'Unable to open payment page',
+                    });
+                    }
+                    } catch (error) {
+                    console.error('Error opening Stripe URL:', error);
+        Toast.show({
+            type: 'error',
+                text1: 'Error',
+                    text2: 'Failed to open payment page',
+                    });
+                }
+};
+    
+        andle cancel
+            t handleCancel = () => {
+                navigation.goBack();
+                    
+                        
+            return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
+        <StatusBar barStyle="light-content" backgroundColor="#007bff" />
             <LinearGradient colors={['#007bff', '#69bfff']} style={styles.container}>
-                <ScrollView contentContainerStyle={styles.scrollContent}>
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <TouchableOpacity
+                    <ScrollView contentContainerStyle={styles.scrollContent}>
+                            {/* Header */}
+                <View style={styles.header}>
+                    <TouchableOpacity
                             onPress={() => navigation.goBack()}
-                            style={styles.backButton}
-                        >
-                            <Icon name="arrow-left" size={20} color="#fff" />
-                        </TouchableOpacity>
+                                style={styles.backButton}
+                                >
+                        <Icon name="arrow-left" size={20} color="#fff" />
+                    </TouchableOpacity>
                         <Text style={styles.headerTitle}>Upgrade to Premium</Text>
-                    </View>
-
-                    {/* Main Content */}
-                    <View style={styles.content}>
-                        <View style={styles.card}>
-                            <Text style={styles.title}>SafetyCam AI Premium</Text>
-                            <Text style={styles.subtitle}>
-                                Unlock unlimited access to all features
-                            </Text>
-
-                            {/* Benefits */}
-                            <View style={styles.benefitsContainer}>
-                                <View style={styles.benefitItem}>
-                                    <Icon name="check-circle" size={24} color="#0C66E4" />
-                                    <Text style={styles.benefitText}>Unlimited Searches</Text>
-                                </View>
-                                <View style={styles.benefitItem}>
-                                    <Icon name="check-circle" size={24} color="#0C66E4" />
-                                    <Text style={styles.benefitText}>Advanced Facial Recognition</Text>
-                                </View>
-                                <View style={styles.benefitItem}>
-                                    <Icon name="check-circle" size={24} color="#0C66E4" />
-                                    <Text style={styles.benefitText}>Priority Support</Text>
-                                </View>
-                                <View style={styles.benefitItem}>
-                                    <Icon name="check-circle" size={24} color="#0C66E4" />
-                                    <Text style={styles.benefitText}>No Ads</Text>
-                                </View>
-                            </View>
-
-                            {/* Pricing */}
-                            <View style={styles.pricingContainer}>
-                                {products.length > 0 ? (
-                                    <Text style={styles.price}>{products[0].localizedPrice}</Text>
-                                ) : (
-                                    <Text style={styles.price}>$9.99</Text>
-                                )}
-                                <Text style={styles.pricePeriod}>per month</Text>
-                            </View>
-
-                            {/* Payment Options */}
-                            <View style={styles.paymentOptionsContainer}>
-                                <Text style={styles.paymentOptionsTitle}>Choose Payment Method</Text>
-
-                                {/* Apple Pay Button */}
-                                <TouchableOpacity
-                                    style={[styles.applePayButton, processing && { opacity: 0.7 }]}
-                                    onPress={handleSubscribe}
-                                    disabled={processing}
-                                >
-                                    {processing ? (
-                                        <ActivityIndicator color="#fff" />
-                                    ) : (
-                                        <View style={styles.buttonContent}>
-                                            <Icon name="apple" size={22} color="#fff" />
-                                            <Text style={styles.applePayText}>Pay with Apple</Text>
-                                        </View>
-                                    )}
-                                </TouchableOpacity>
-
-                                {/* Stripe Button - Opens in Safari */}
-                                <TouchableOpacity
-                                    style={styles.stripeButton}
-                                    onPress={handleStripePayment}
-                                >
-                                    <View style={styles.buttonContent}>
-                                        <Icon name="cc-stripe" size={20} color="#fff" />
-                                        <Text style={styles.stripeText}>Pay Via Stripe</Text>
-                                    </View>
-                                </TouchableOpacity>
-
-                                {/* Cancel Button */}
-                                <TouchableOpacity
-                                    style={styles.cancelButton}
-                                    onPress={handleCancel}
-                                >
-                                    <Text style={styles.cancelText}>Cancel</Text>
-                                </TouchableOpacity>
-                            </View>---
-
-                            {/* Terms */}
-                            <Text style={styles.terms}>
-                                Subscription automatically renews unless cancelled 24 hours before the
-                                end of the current period. By subscribing, you agree to our Terms of Service.
-                            </Text>
                         </View>
-                    </View>
-                </ScrollView>
-            </LinearGradient>
-        </SafeAreaView>
-    );
-}
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    scrollContent: {
-        flexGrow: 1,
-        padding: 20,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 30,
-    },
-    backButton: {
-        padding: 10,
-        marginRight: 10,
-    },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#fff',
-    },
-    content: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    card: {
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: '700',
-        color: '#0C66E4',
-        textAlign: 'center',
-        marginBottom: 8,
-    },
-    subtitle: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        marginBottom: 32,
-    },
-    benefitsContainer: {
-        marginBottom: 32,
-    },
-    benefitItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    benefitText: {
-        fontSize: 16,
-        color: '#333',
-        marginLeft: 12,
-        fontWeight: '500',
-    },
-    pricingContainer: {
-        alignItems: 'center',
-        marginBottom: 24,
-        paddingVertical: 20,
-        backgroundColor: '#f8f9fa',
-        borderRadius: 12,
-    },
-    price: {
-        fontSize: 48,
-        fontWeight: '700',
-        color: '#0C66E4',
-    },
-    pricePeriod: {
-        fontSize: 16,
-        color: '#666',
-        marginTop: 4,
-    },
-    subscribeButton: {
-        backgroundColor: '#0C66E4',
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    subscribeText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '700',
-    },
-    terms: {
-        fontSize: 12,
-        color: '#999',
-        textAlign: 'center',
-        lineHeight: 18,
-        marginTop: 16,
-    },
-    // Payment Options Styles
-    paymentOptionsContainer: {
-        marginTop: 8,
-    },
-    paymentOptionsTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#333',
-        textAlign: 'center',
-        marginBottom: 16,
-    },
-    buttonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    applePayButton: {
-        backgroundColor: '#000',
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    applePayText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '700',
-        marginLeft: 10,
-    },
-    stripeButton: {
-        backgroundColor: '#635BFF',
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    stripeText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '700',
-        marginLeft: 10,
-    },
-    cancelButton: {
-        backgroundColor: 'transparent',
-        paddingVertical: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#ccc',
-        alignItems: 'center',
-    },
-    cancelText: {
-        color: '#666',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-});
+                            {/* Main Content */}
+                            <View style={styles.content}>
+                                <View style={styles.card}>
+                                    <Text style={styles.title}>SafetyCam AI Premium</Text>
+                                    <Text style={styles.subtitle}>
+                                        Unlock unlimited access to all features
+                                    </Text>
+
+                                    {/* Benefits */}
+                                    <View style={styles.benefitsContainer}>
+                                        <View style={styles.benefitItem}>
+                                            <Icon name="check-circle" size={24} color="#0C66E4" />
+                                            <Text style={styles.benefitText}>Unlimited Searches</Text>
+                                        </View>
+                                        <View style={styles.benefitItem}>
+                                            <Icon name="check-circle" size={24} color="#0C66E4" />
+                                            <Text style={styles.benefitText}>Advanced Facial Recognition</Text>
+                                        </View>
+                                        <View style={styles.benefitItem}>
+                                            <Icon name="check-circle" size={24} color="#0C66E4" />
+                                            <Text style={styles.benefitText}>Priority Support</Text>
+                                        </View>
+                                        <View style={styles.benefitItem}>
+                                            <Icon name="check-circle" size={24} color="#0C66E4" />
+                                            <Text style={styles.benefitText}>No Ads</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Pricing */}
+                                    <View style={styles.pricingContainer}>
+                                        {products.length > 0 ? (
+                                            <Text style={styles.price}>{products[0].localizedPrice}</Text>
+                                        ) : (
+                                            <Text style={styles.price}>$9.99</Text>
+                                        )}
+                                        <Text style={styles.pricePeriod}>per month</Text>
+                                    </View>
+
+                                    {/* Payment Options */}
+                                    <View style={styles.paymentOptionsContainer}>
+                                        <Text style={styles.paymentOptionsTitle}>Choose Payment Method</Text>
+
+                                        {/* Apple Pay Button */}
+                                        <TouchableOpacity
+                                            style={[styles.applePayButton, processing && { opacity: 0.7 }]}
+                                            onPress={handleSubscribe}
+                                            disabled={processing}
+                                        >
+                                            {processing ? (
+                                                <ActivityIndicator color="#fff" />
+                                            ) : (
+                                                <View style={styles.buttonContent}>
+                                                    <Icon name="apple" size={22} color="#fff" />
+                                                    <Text style={styles.applePayText}>Pay with Apple</Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+
+                                        {/* Stripe Button - Opens in Safari */}
+                                        <TouchableOpacity
+                                            style={styles.stripeButton}
+                                            onPress={handleStripePayment}
+                                        >
+                                            <View style={styles.buttonContent}>
+                                                <Icon name="cc-stripe" size={20} color="#fff" />
+                                                <Text style={styles.stripeText}>Pay Via Stripe</Text>
+                                            </View>
+                                        </TouchableOpacity>
+
+                                        {/* Cancel Button */}
+                                        <TouchableOpacity
+                                            style={styles.cancelButton}
+                                            onPress={handleCancel}
+                                        >
+                                            <Text style={styles.cancelText}>Cancel</Text>
+                                        </TouchableOpacity>
+
+                                        {/* Restore Purchase Link */}
+                                        <TouchableOpacity
+                                            style={styles.restoreButton}
+                                            onPress={handleRestorePurchase}
+                                            disabled={processing}
+                                        >
+                                            <Text style={styles.restoreText}>Already a member? Restore Purchase</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Terms */}
+                                    <Text style={styles.terms}>
+                                        Subscription automatically renews unless cancelled 24 hours before the
+                                        end of the current period. By subscribing, you agree to our Terms of Service.
+                                    </Text>
+                                </View>
+                            </View>
+                        </ScrollView>
+                    </LinearGradient>
+                </SafeAreaView>
+            );
+        }
+
+        const styles = StyleSheet.create({
+            container: {
+                flex: 1,
+            },
+            scrollContent: {
+                flexGrow: 1,
+                padding: 20,
+            },
+            header: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginBottom: 30,
+            },
+            backButton: {
+                padding: 10,
+                marginRight: 10,
+            },
+            headerTitle: {
+                fontSize: 20,
+                fontWeight: '700',
+                color: '#fff',
+            },
+            content: {
+                flex: 1,
+                justifyContent: 'center',
+            },
+            card: {
+                backgroundColor: '#fff',
+                borderRadius: 16,
+                padding: 24,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+                elevation: 5,
+            },
+            title: {
+                fontSize: 28,
+                fontWeight: '700',
+                color: '#0C66E4',
+                textAlign: 'center',
+                marginBottom: 8,
+            },
+            subtitle: {
+                fontSize: 16,
+                color: '#666',
+                textAlign: 'center',
+                marginBottom: 32,
+            },
+            benefitsContainer: {
+                marginBottom: 32,
+            },
+            benefitItem: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginBottom: 16,
+            },
+            benefitText: {
+                fontSize: 16,
+                color: '#333',
+                marginLeft: 12,
+                fontWeight: '500',
+            },
+            pricingContainer: {
+                alignItems: 'center',
+                marginBottom: 24,
+                paddingVertical: 20,
+                backgroundColor: '#f8f9fa',
+                borderRadius: 12,
+            },
+            price: {
+                fontSize: 48,
+                fontWeight: '700',
+                color: '#0C66E4',
+            },
+            pricePeriod: {
+                fontSize: 16,
+                color: '#666',
+                marginTop: 4,
+            },
+            subscribeButton: {
+                backgroundColor: '#0C66E4',
+                paddingVertical: 16,
+                borderRadius: 12,
+                alignItems: 'center',
+                marginBottom: 16,
+            },
+            subscribeText: {
+                color: '#fff',
+                fontSize: 18,
+                fontWeight: '700',
+            },
+            terms: {
+                fontSize: 12,
+                color: '#999',
+                textAlign: 'center',
+                lineHeight: 18,
+                marginTop: 16,
+            },
+            // Payment Options Styles
+            paymentOptionsContainer: {
+                marginTop: 8,
+            },
+            paymentOptionsTitle: {
+                fontSize: 16,
+                fontWeight: '600',
+                color: '#333',
+                textAlign: 'center',
+                marginBottom: 16,
+            },
+            buttonContent: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+            },
+            applePayButton: {
+                backgroundColor: '#000',
+                paddingVertical: 16,
+                borderRadius: 12,
+                alignItems: 'center',
+                marginBottom: 12,
+            },
+            applePayText: {
+                color: '#fff',
+                fontSize: 18,
+                fontWeight: '700',
+                marginLeft: 10,
+            },
+            stripeButton: {
+                backgroundColor: '#635BFF',
+                paddingVertical: 16,
+                borderRadius: 12,
+                alignItems: 'center',
+                marginBottom: 12,
+            },
+            stripeText: {
+                color: '#fff',
+                fontSize: 18,
+                fontWeight: '700',
+                marginLeft: 10,
+            },
+            cancelButton: {
+                backgroundColor: 'transparent',
+                paddingVertical: 14,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#ccc',
+                alignItems: 'center',
+            },
+            cancelText: {
+                color: '#666',
+                fontSize: 16,
+                fontWeight: '600',
+            },
+            restoreButton: {
+                marginTop: 20,
+                paddingVertical: 10,
+                alignItems: 'center',
+            },
+            restoreText: {
+                color: '#007bff',
+                fontSize: 14,
+                fontWeight: '500',
+                textDecorationLine: 'underline',
+            },
+        });
+    
