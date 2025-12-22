@@ -158,7 +158,7 @@ const DetectionSteps = ({ image, currentStatus, onChangeImage }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Criminal Image</Text>
+      <Text style={styles.title}>Public Image</Text>
 
       <View style={styles.imageWrapper}>
         {validImage ? (

@@ -27,7 +27,40 @@ const ProfileScreen = () => {
   const navigation = useNavigation();
   const { logout } = useAuth();
   const [deleteUser] = useMutation(DELETE_USER);
-  const [userProfile, setUserProfile] = useState({ name: 'User', email: 'Loading...' });
+
+  // Initialize with empty state, but we'll fill it from token immediately
+  const [userProfile, setUserProfile] = useState({
+    name: 'User',
+    email: 'Loading...',
+    id: null,
+    linked_accounts: [],
+    paymentPlan: null
+  });
+
+  // Load from token on mount to avoid waiting for GET_ME
+  useEffect(() => {
+    const loadFromToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (token) {
+          const decoded = jwtDecode(token);
+          console.log('👤 Initial load from token:', decoded);
+          setUserProfile({
+            name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
+            email: decoded.email || decoded.upn || 'No Email',
+            id: decoded.id || decoded.sub,
+            linked_accounts: decoded.linked_accounts,
+            paymentPlan: decoded.paymentPlan,
+            paymentDate: decoded.paymentDate,
+            paymentExpiryDate: decoded.paymentExpiryDate,
+          });
+        }
+      } catch (e) {
+        console.error('Initial token decode failed', e);
+      }
+    };
+    loadFromToken();
+  }, []);
 
   // Fetch user details: Try GET_ME first, fallback to Token Decode
   const { data: userData, loading, error, refetch } = useQuery(GET_ME, {
@@ -37,7 +70,7 @@ const ProfileScreen = () => {
       if (data?.me) {
         console.log('👤 User Profile Data:', data.me);
         console.log('👤 Linked Accounts:', data.me.linked_accounts);
-        
+
         // Get payment info from token (GET_ME doesn't return payment info)
         let paymentInfo = {};
         try {
@@ -54,7 +87,7 @@ const ProfileScreen = () => {
         } catch (e) {
           console.warn('Failed to get payment info from token:', e);
         }
-        
+
         // Merge GET_ME data with payment info from token
         setUserProfile(prev => ({
           ...data.me,
@@ -92,34 +125,6 @@ const ProfileScreen = () => {
       refetch();
     }, [refetch])
   );
-
-  // Also try decode on mount just in case GET_ME is slow or fails silently
-  useEffect(() => {
-    const loadFromToken = async () => {
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (token) {
-          const decoded = jwtDecode(token);
-          console.log('👤 Decoded JWT token:', decoded);
-          // Only update if we don't have data yet or if GET_ME failed
-          setUserProfile(prev => ({
-            ...prev,
-            name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
-            email: decoded.email || decoded.upn || prev.email,
-            id: decoded.id || decoded.sub || prev.id,
-            linked_accounts: decoded.linked_accounts || prev.linked_accounts,
-            // Payment/Subscription info from token
-            paymentPlan: decoded.paymentPlan || prev.paymentPlan,
-            paymentDate: decoded.paymentDate || prev.paymentDate,
-            paymentExpiryDate: decoded.paymentExpiryDate || prev.paymentExpiryDate,
-          }));
-        }
-      } catch (e) {
-        console.error('Initial token decode failed', e);
-      }
-    };
-    loadFromToken();
-  }, []);
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -201,14 +206,13 @@ const ProfileScreen = () => {
               <View style={styles.avatarContainer}>
                 <Icon name="user" size={40} color="#fff" />
               </View>
-              {loading ? (
-                <ActivityIndicator size="small" color="#007bff" />
-              ) : (
-                <>
-                  <Text style={styles.userName}>{userProfile?.name || 'User'}</Text>
-                  <Text style={styles.userEmail}>{userProfile?.email || 'Loading email...'}</Text>
-                </>
-              )}
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.userName}>{userProfile?.name || 'User'}</Text>
+                <Text style={styles.userEmail}>{userProfile?.email || 'Loading email...'}</Text>
+                {loading && !userProfile.id && (
+                  <ActivityIndicator size="small" color="#007bff" style={{ marginTop: 8 }} />
+                )}
+              </View>
             </View>
 
             <View style={styles.badgeContainer}>
@@ -233,14 +237,14 @@ const ProfileScreen = () => {
           {/* Subscription Status */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Subscription Status</Text>
-            
+
             {/* Debug info - remove in production */}
             {__DEV__ && (
               <Text style={{ fontSize: 10, color: '#999', marginBottom: 8 }}>
                 Debug: paymentPlan = {userProfile?.paymentPlan || 'null'}
               </Text>
             )}
-            
+
             {userProfile?.paymentPlan ? (
               // User has a subscription (Premium)
               <>
@@ -250,7 +254,7 @@ const ProfileScreen = () => {
                     <Text style={styles.proBadgeText}>Premium</Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.subscriptionDetails}>
                   <View style={styles.subscriptionRow}>
                     <Text style={styles.subscriptionLabel}>Plan</Text>
@@ -290,7 +294,7 @@ const ProfileScreen = () => {
                     <Text style={styles.freeBadgeText}>Free Plan</Text>
                   </View>
                 </View>
-                
+
                 <Text style={styles.freeDescription}>
                   Upgrade to Premium for unlimited searches and advanced features.
                 </Text>

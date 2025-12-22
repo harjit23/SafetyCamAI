@@ -15,15 +15,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onError } from '@apollo/client/link/error';
 import { API_BASE_URL } from '../config';
 
+import authEvents, { AUTH_EVENTS } from '../utils/authEvents';
+
 // Log GraphQL + network errors
 const errorLink = onError(({ graphQLErrors, networkError }) => {
   if (graphQLErrors) {
     graphQLErrors.forEach(err => {
       console.error('GraphQL Error:', err);
+
+      // Check for unauthorized/unauthenticated errors
+      if (err.extensions?.code === 'UNAUTHENTICATED' ||
+        err.message?.toLowerCase().includes('unauthorized') ||
+        err.message?.toLowerCase().includes('unauthenticated')) {
+        console.log('[ApolloClient] Unauthorized error detected, triggering global logout');
+        authEvents.emit(AUTH_EVENTS.LOGOUT);
+      }
     });
   }
   if (networkError) {
     console.error('Network Error:', networkError);
+    // Some backends return 401 as a network error
+    if (networkError.statusCode === 401) {
+      console.log('[ApolloClient] 401 Network error detected, triggering global logout');
+      authEvents.emit(AUTH_EVENTS.LOGOUT);
+    }
   }
 });
 

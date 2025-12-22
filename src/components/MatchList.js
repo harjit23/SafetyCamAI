@@ -112,7 +112,7 @@ const MatchList = ({ image, results = [], onSelectImage, onReset }) => {
     <ScrollView contentContainerStyle={styles.wrapper}>
       {/* Uploaded Image */}
       <View style={styles.leftBox}>
-        <Text style={styles.sectionTitle}>Criminal Image</Text>
+        <Text style={styles.sectionTitle}>Public Image</Text>
         {image ? (
           <Image source={{ uri: image.uri }} style={styles.criminalImage} />
         ) : (
@@ -120,7 +120,7 @@ const MatchList = ({ image, results = [], onSelectImage, onReset }) => {
             <Text style={styles.placeholderText}>No image</Text>
           </View>
         )}
-        
+
         {/* Change Image / Open Camera Links */}
         {onSelectImage && (
           <View style={styles.changeImageContainer}>

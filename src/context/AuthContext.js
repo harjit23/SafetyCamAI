@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import authEvents, { AUTH_EVENTS } from '../utils/authEvents';
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -13,12 +15,12 @@ export const AuthProvider = ({ children }) => {
       try {
         const accessToken = await AsyncStorage.getItem('accessToken');
         const savedUserData = await AsyncStorage.getItem('userData');
-        
+
         if (accessToken) {
           // Clear any stale redirect flags when session is restored
           // This prevents unwanted redirects from previous sessions
           await AsyncStorage.removeItem('redirectToSubscription');
-          
+
           // If we have a saved user data, use it
           if (savedUserData) {
             try {
@@ -47,6 +49,18 @@ export const AuthProvider = ({ children }) => {
     };
 
     restoreSession();
+
+    // Listen for global logout events (e.g. from Apollo Client on 401)
+    const logoutListener = () => {
+      console.log('[AuthContext] Global logout event received');
+      logout();
+    };
+
+    authEvents.on(AUTH_EVENTS.LOGOUT, logoutListener);
+
+    return () => {
+      authEvents.off(AUTH_EVENTS.LOGOUT, logoutListener);
+    };
   }, []);
 
   const login = async (userData) => {

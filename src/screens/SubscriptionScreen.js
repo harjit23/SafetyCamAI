@@ -36,17 +36,17 @@ export default function SubscriptionScreen() {
 
         // Clear the redirectToSubscription flag since we've reached the subscription screen
         // This prevents the flag from persisting and causing repeated redirects on future logins
-        AsyncStorage.removeItem('redirectToSubscription').catch(() => {});
+        AsyncStorage.removeItem('redirectToSubscription').catch(() => { });
 
         const initIAP = async () => {
             try {
                 await RNIap.initConnection();
-                
+
                 // Check for existing purchases (active subscriptions)
                 try {
                     const existingPurchases = await RNIap.getAvailablePurchases();
                     console.log('📦 Existing purchases found:', existingPurchases?.length || 0);
-                    
+
                     // If user has active subscription(s), verify with backend
                     if (existingPurchases && existingPurchases.length > 0) {
                         console.log('🔄 User has existing purchases, checking subscription status...');
@@ -56,7 +56,7 @@ export default function SubscriptionScreen() {
                 } catch (pendingErr) {
                     console.warn('Error checking existing purchases:', pendingErr);
                 }
-                
+
                 const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
                 console.log('📦 Available Products:', availableProducts);
                 if (availableProducts.length === 0) {
@@ -82,7 +82,7 @@ export default function SubscriptionScreen() {
         // Listen for purchase updates (triggered when user clicks Subscribe or has pending purchase)
         purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
             console.log('📥 Purchase update received:', purchase?.transactionId);
-            
+
             if (!purchase) {
                 console.log('⚠️ Received empty purchase update, ignoring...');
                 if (isSubscribed) setProcessing(false);
@@ -110,7 +110,7 @@ export default function SubscriptionScreen() {
             }
 
             console.log('🧾 Receipt Length:', receipt.length);
-            
+
             try {
                 if (isSubscribed) setProcessing(true);
                 console.log('📤 Sending receipt to backend for verification...');
@@ -140,7 +140,7 @@ export default function SubscriptionScreen() {
                     console.warn('❌ Backend rejected the receipt');
                     // Finish the transaction to clear it from the queue
                     await RNIap.finishTransaction({ purchase, isConsumable: false });
-                    
+
                     Toast.show({
                         type: 'error',
                         text1: 'Verification Failed',
@@ -155,7 +155,7 @@ export default function SubscriptionScreen() {
                 } catch (e) {
                     console.warn('Failed to finish transaction:', e);
                 }
-                
+
                 Toast.show({
                     type: 'error',
                     text1: 'Error',
@@ -276,12 +276,12 @@ export default function SubscriptionScreen() {
             console.log('📤 Requesting subscription for SKU:', itemSkus[0]);
             await RNIap.requestSubscription({ sku: itemSkus[0] });
             console.log('✅ Purchase request sent to Apple');
-            
+
             // Clear timeout - the purchaseUpdatedListener will handle the rest
             clearTimeout(purchaseTimeout);
         } catch (err) {
             console.warn('❌ Purchase error:', err.message, err.code);
-            
+
             // Check for specific error codes
             if (err.code === 'E_USER_CANCELLED' || err.message?.includes('cancelled')) {
                 console.log('👤 User cancelled the purchase');
@@ -307,8 +307,8 @@ export default function SubscriptionScreen() {
     // Handle Stripe payment - opens external browser (Safari)
     const handleStripePayment = async () => {
         // Replace this URL with your actual Stripe payment page
-        const STRIPE_PAYMENT_URL = 'https://your-website.com/subscribe';
-        
+        const STRIPE_PAYMENT_URL = 'https://safetycamai.com';
+
         try {
             const canOpen = await Linking.canOpenURL(STRIPE_PAYMENT_URL);
             if (canOpen) {
@@ -415,8 +415,8 @@ export default function SubscriptionScreen() {
                                     onPress={handleStripePayment}
                                 >
                                     <View style={styles.buttonContent}>
-                                        <Icon name="credit-card" size={20} color="#fff" />
-                                        <Text style={styles.stripeText}>Pay with Card</Text>
+                                        <Icon name="cc-stripe" size={20} color="#fff" />
+                                        <Text style={styles.stripeText}>Pay Via Stripe</Text>
                                     </View>
                                 </TouchableOpacity>
 
@@ -427,7 +427,7 @@ export default function SubscriptionScreen() {
                                 >
                                     <Text style={styles.cancelText}>Cancel</Text>
                                 </TouchableOpacity>
-                            </View>
+                            </View>---
 
                             {/* Terms */}
                             <Text style={styles.terms}>
