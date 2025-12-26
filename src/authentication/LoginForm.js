@@ -16,8 +16,8 @@ import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 import Icon from 'react-native-vector-icons/FontAwesome';
 
-import { useLoader } from '../context/LoaderContext';
 import { useAuth } from '../context/AuthContext';
+import { useLoader } from '../context/LoaderContext';
 import { LOGIN_MUTATION } from '../graphql/mutations';
 import { API_BASE_URL } from '../config';
 
@@ -32,7 +32,7 @@ export default function LoginForm({ switchTo }) {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const [login] = useMutation(LOGIN_MUTATION);
+  const [login, { loading: loginLoading }] = useMutation(LOGIN_MUTATION);
 
   // --- validation helpers ---
   const isEmailValid = useMemo(
@@ -71,15 +71,17 @@ export default function LoginForm({ switchTo }) {
       // Clear any stale tokens before new login attempt to prevent 500 errors
       await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'mfaToken']);
 
-      const { data } = await login({ variables: { email, password, rememberMe: false } });
-      const loginRes = data?.login;
+      const { data: loginData } = await login({ variables: { email, password } });
+      const loginRes = loginData?.login;
+
       console.log('🔐 Full Login Response:', JSON.stringify(loginRes, null, 2));
 
-      if (!loginRes) {
+      if (!loginRes?.token) {
+        hideLoader();
         Toast.show({
           type: 'error',
           text1: 'Login Failed',
-          text2: 'No user data returned from server.',
+          text2: 'Invalid credentials.',
         });
         return;
       }
@@ -95,9 +97,16 @@ export default function LoginForm({ switchTo }) {
 
       const { token, refreshToken } = loginRes.token || {};
 
-      console.log('🔐 Login Token:', token);
+      console.log('🎫 RAW LOGIN ACCESS TOKEN:', token);
+      try {
+        const decoded = jwtDecode(token);
+        console.log('🔑 FULL DECODED LOGIN TOKEN:', JSON.stringify(decoded, null, 2));
+      } catch (e) {
+        console.error('❌ Failed to decode login token:', e);
+      }
 
       if (!token || !refreshToken) {
+        hideLoader();
         Toast.show({
           type: 'error',
           text1: 'Login Failed',

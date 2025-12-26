@@ -21,14 +21,17 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { VERIFY_RECEIPT_MUTATION } from '../graphql/mutations';
+import { useLoader } from '../context/LoaderContext';
 
 const itemSkus = ['com.safetycamai.monthly'];
 
 export default function SubscriptionScreen() {
     const navigation = useNavigation();
     const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
+    const { showLoader, hideLoader } = useLoader();
     const [processing, setProcessing] = useState(false);
     const [products, setProducts] = useState([]);
+    const isUserInitiatedRef = React.useRef(false);
 
     useEffect(() => {
         let purchaseUpdateSubscription = null;
@@ -39,6 +42,7 @@ export default function SubscriptionScreen() {
 
         const initIAP = async () => {
             try {
+                showLoader('Initializing...');
                 await RNIap.initConnection();
                 const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
                 if (isSubscribed) {
@@ -53,13 +57,30 @@ export default function SubscriptionScreen() {
                         text2: 'Failed to load subscription options',
                     });
                 }
+            } finally {
+                hideLoader();
             }
         };
 
         initIAP();
 
         purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+            console.log('🔔 Purchase Update Listener Triggered:', purchase?.transactionId);
             if (!purchase) return;
+
+            // Only proceed if the user actually initiated a subscribe or restore action
+            if (!isUserInitiatedRef.current) {
+                console.log('⚠️ Ignoring purchase update: Not initiated by user action on this screen');
+                // We still need to finish the transaction if it's an old one to clear the queue
+                try {
+                    await RNIap.finishTransaction({ purchase, isConsumable: false });
+                    console.log('✅ Finished old transaction to clear queue');
+                } catch (e) {
+                    console.warn('Failed to finish old transaction:', e);
+                }
+                return;
+            }
+
             let receipt = purchase.transactionReceipt;
             if (!receipt && Platform.OS === 'ios') {
                 try {
@@ -70,31 +91,48 @@ export default function SubscriptionScreen() {
             }
 
             if (!receipt) {
-                if (isSubscribed) setProcessing(false);
+                console.warn('❌ No receipt found in purchase update');
+                if (isSubscribed) {
+                    setProcessing(false);
+                    hideLoader();
+                }
                 return;
             }
 
             try {
-                if (isSubscribed) setProcessing(true);
+                if (isSubscribed) {
+                    setProcessing(true);
+                    showLoader('Verifying purchase...');
+                }
+                console.log('📤 Verifying receipt with backend...');
                 const { data } = await verifyReceipt({ variables: { receipt } });
 
                 if (data?.verifyApplePayment === true) {
+                    console.log('✅ Receipt verified successfully');
                     await RNIap.finishTransaction({ purchase, isConsumable: false });
                     Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription activated successfully!' });
+                    isUserInitiatedRef.current = false;
                     setTimeout(() => navigation.navigate('Home'), 1500);
                 } else {
+                    console.warn('❌ Receipt verification failed on backend');
                     await RNIap.finishTransaction({ purchase, isConsumable: false });
                     Toast.show({ type: 'error', text1: 'Verification Failed', text2: 'Receipt verification failed.' });
+                    isUserInitiatedRef.current = false;
                 }
             } catch (error) {
                 console.error('❌ Error verifying receipt:', error);
                 try {
-                    await RNIap.finishTransaction({ purchase, isConsumable: false }); } catch (e) {} 
-                    Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to verify payment.' });
-                } finally {
-                    if (isSubscribed) setProcessing(false);
+                    await RNIap.finishTransaction({ purchase, isConsumable: false });
+                } catch (e) { }
+                Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to verify payment.' });
+                isUserInitiatedRef.current = false;
+            } finally {
+                if (isSubscribed) {
+                    setProcessing(false);
+                    hideLoader();
                 }
-            });
+            }
+        });
 
         purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
             if (error.responseCode !== '2' && error.responseCode !== 2) {
@@ -113,14 +151,21 @@ export default function SubscriptionScreen() {
 
     const handleSubscribe = async () => {
         try {
+            console.log('🚀 Initiating subscription purchase...');
+            isUserInitiatedRef.current = true;
             setProcessing(true);
+            showLoader('Connecting to Store...');
             if (products.length === 0) {
                 Toast.show({ type: 'error', text1: 'Error', text2: 'No products available.' });
                 setProcessing(false);
+                hideLoader();
+                isUserInitiatedRef.current = false;
                 return;
             }
             await RNIap.requestSubscription({ sku: itemSkus[0] });
         } catch (err) {
+            console.error('❌ Subscription Request Error:', err);
+            isUserInitiatedRef.current = false;
             if (err.code === 'E_ALREADY_OWNED') {
                 Toast.show({ type: 'success', text1: 'Already Subscribed', text2: 'You already have an active subscription!' });
                 setTimeout(() => navigation.navigate('Home'), 1500);
@@ -129,14 +174,18 @@ export default function SubscriptionScreen() {
             }
         } finally {
             setProcessing(false);
+            hideLoader();
         }
     };
 
     const handleRestorePurchase = async () => {
         try {
+            console.log('🔄 Initiating restore purchase...');
+            isUserInitiatedRef.current = true;
             setProcessing(true);
+            showLoader('Restoring purchases...');
             const availablePurchases = await RNIap.getAvailablePurchases();
-            
+
             if (!availablePurchases || availablePurchases.length === 0) {
                 Toast.show({ type: 'info', text1: 'No Purchases Found', text2: 'We couldn\'t find any active subscriptions to restore.' });
                 return;
@@ -174,6 +223,7 @@ export default function SubscriptionScreen() {
             Toast.show({ type: 'error', text1: 'Restore Error', text2: err.message || 'An error occurred.' });
         } finally {
             setProcessing(false);
+            hideLoader();
         }
     };
 

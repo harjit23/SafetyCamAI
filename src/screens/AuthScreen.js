@@ -29,18 +29,29 @@ import MfaVerify from '../authentication/MfaVerify';
 
 import { VERIFY_EMAIL_ADDRESS_MUTATION } from '../graphql/mutations';
 import { useAlert } from '../context/AlertContext';
+import { useLoader } from '../context/LoaderContext';
 
 export default function AuthScreen() {
   const [activeScreen, setActiveScreen] = useState('login');
   const route = useRoute();
   const navigation = useNavigation();
-  const { setUser } = useAuth();
+  const { user, setUser } = useAuth();
   const { showAlert } = useAlert();
+  const { showLoader, hideLoader } = useLoader();
   const [verifyEmailAddress] = useMutation(VERIFY_EMAIL_ADDRESS_MUTATION);
 
   useEffect(() => {
     const params = route.params || {};
     const { code, email, provider } = params;
+
+    // Redirect if already logged in and not exchanging a code
+    if (user && !code) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Home' }],
+      });
+      return;
+    }
 
     // Handle Social Login Code Exchange
     const handleSocialExchange = async () => {
@@ -60,6 +71,7 @@ export default function AuthScreen() {
       if (code && targetProvider && !email) {
         console.log('[AuthScreen] Received social login params:', { code, provider: targetProvider });
         try {
+          showLoader('Exchanging code...');
           console.log(`[AuthScreen] Exchanging code with ${API_BASE_URL}/auth/${targetProvider}/exchange`);
           const response = await axios.post(
             `${API_BASE_URL}/auth/${targetProvider}/exchange`,
@@ -117,6 +129,8 @@ export default function AuthScreen() {
              console.error('Error response status:', error.response.status);
           }
           showAlert('Login failed. Please try again.');
+        } finally {
+          hideLoader();
         }
       }
     };

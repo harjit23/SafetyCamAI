@@ -15,7 +15,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
-import jwtDecode from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
 import { gql, useMutation } from '@apollo/client';
 import { client } from '../apollo/client';
 
@@ -213,10 +213,21 @@ export default function HomeScreen() {
       }
 
       const pending = data?.pendingLookups;
-      setRemainingAttempts(pending?.pendingLookups ?? null);
+      const attempts = pending?.pendingLookups ?? null;
+      console.log('✅ [HomeScreen] Fetched attempts:', attempts);
+      setRemainingAttempts(attempts);
       setAttemptsResetAt(pending?.lastDate ?? null);
+
+      // 🔍 Log remaining attempts and plan type (Safe logging)
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        const planType = token ? jwtDecode(token).paymentPlan : 'Guest';
+        console.log(`📊 [HomeScreen] Plan: ${planType} | Remaining Attempts: ${attempts}`);
+      } catch (logError) {
+        console.log('📊 [HomeScreen] Remaining Attempts:', attempts);
+      }
     } catch (e) {
-      console.log('[GET_PENDING_LOOKUPS error]', e?.message || e);
+      console.error('❌ [HomeScreen] fetchPending Error:', e);
       setRemainingAttempts(null);
       setAttemptsResetAt(null);
     }
@@ -386,8 +397,8 @@ export default function HomeScreen() {
 
       setImage(selectedImage);
       setResults([]);
-      resetFlags();
       setTrackingMessage('Preparing upload…');
+      resetFlags();
       setState('verifying');
 
       const subId = generateSubscriptionId();

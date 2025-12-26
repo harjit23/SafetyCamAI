@@ -38,9 +38,18 @@ const Navbar = () => {
               <Icon name="arrow-left" size={20} color="#fff" />
             </TouchableOpacity>
           )}
-          <Text style={styles.logo}>
-            <Text style={{ fontWeight: 'bold' }}>Safety Cam AI</Text>
-          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              });
+            }}
+          >
+            <Text style={styles.logo}>
+              <Text style={{ fontWeight: 'bold' }}>Safety Cam AI</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.rightButtons}>

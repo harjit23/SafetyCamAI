@@ -83,6 +83,7 @@ export const GET_ME = gql`
       email
       name
       linked_accounts
+      pendingLookups
     }
   }
 `;

@@ -26,10 +26,23 @@ import { Platform } from 'react-native';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [deleteUser] = useMutation(DELETE_USER);
   const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
   const itemSkus = ['com.safetycamai.monthly'];
+
+  // Auth check
+  useFocusEffect(
+    React.useCallback(() => {
+      const checkAuth = async () => {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (!user || !token) {
+          navigation.navigate('AuthLogin');
+        }
+      };
+      checkAuth();
+    }, [user, navigation])
+  );
 
   // Handle Restore Purchase
   const handleRestorePurchase = async () => {
@@ -130,6 +143,29 @@ const ProfileScreen = () => {
         const token = await AsyncStorage.getItem('accessToken');
         if (token) {
           const decoded = jwtDecode(token);
+          console.log('🎫 RAW ACCESS TOKEN:', token);
+          console.log('🔑 FULL DECODED TOKEN (Initial Load):', JSON.stringify(decoded, null, 2));
+
+          if (decoded.linked_accounts) {
+            try {
+              const parsed = typeof decoded.linked_accounts === 'string' ? JSON.parse(decoded.linked_accounts) : decoded.linked_accounts;
+              console.log('🔗 DECODED LINKED ACCOUNTS:', JSON.stringify(parsed, null, 2));
+            } catch (e) {
+              console.log('🔗 LINKED ACCOUNTS (Raw):', decoded.linked_accounts);
+            }
+          }
+
+          const refreshToken = await AsyncStorage.getItem('refreshToken');
+          if (refreshToken) {
+            console.log('🎫 RAW REFRESH TOKEN:', refreshToken);
+            try {
+              const decodedRefresh = jwtDecode(refreshToken);
+              console.log('🔑 DECODED REFRESH TOKEN:', JSON.stringify(decodedRefresh, null, 2));
+            } catch (e) {
+              console.log('❌ Failed to decode refresh token');
+            }
+          }
+
           console.log('👤 Initial load from token:', decoded);
           setUserProfile({
             name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
@@ -140,6 +176,7 @@ const ProfileScreen = () => {
             paymentDate: decoded.paymentDate,
             paymentExpiryDate: decoded.paymentExpiryDate,
           });
+
         }
       } catch (e) {
         console.error('Initial token decode failed', e);
@@ -163,6 +200,7 @@ const ProfileScreen = () => {
           const token = await AsyncStorage.getItem('accessToken');
           if (token) {
             const decoded = jwtDecode(token);
+            console.log('🔑 FULL DECODED TOKEN (Payment Info):', JSON.stringify(decoded, null, 2));
             paymentInfo = {
               paymentPlan: decoded.paymentPlan,
               paymentDate: decoded.paymentDate,
@@ -175,10 +213,15 @@ const ProfileScreen = () => {
         }
 
         // Merge GET_ME data with payment info from token
-        setUserProfile(prev => ({
-          ...data.me,
-          ...paymentInfo,
-        }));
+        setUserProfile(prev => {
+          const updated = {
+            ...data.me,
+            ...paymentInfo,
+          };
+          // 🔍 Log remaining attempts and plan type
+          console.log(`📊 [ProfileScreen] Plan: ${updated.paymentPlan || 'Free'} | Remaining Attempts: ${updated.pendingLookups ?? 'N/A'}`);
+          return updated;
+        });
       }
     },
     onError: async (err) => {
@@ -188,6 +231,7 @@ const ProfileScreen = () => {
         const token = await AsyncStorage.getItem('accessToken');
         if (token) {
           const decoded = jwtDecode(token);
+          console.log('🔑 FULL DECODED TOKEN (Fallback):', JSON.stringify(decoded, null, 2));
           console.log('Decoded Token:', decoded);
           setUserProfile({
             name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
@@ -313,64 +357,108 @@ const ProfileScreen = () => {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Account Information</Text>
             <View style={styles.infoRow}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.label}>Email Address</Text>
                 <Text style={styles.value}>{userProfile?.email || '...'}</Text>
               </View>
+              {userProfile?.pendingLookups !== undefined && (
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.label}>Remaining Tasks</Text>
+                  <Text style={[styles.value, { color: '#007bff', fontWeight: 'bold' }]}>
+                    {userProfile.pendingLookups}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
-          {/* Subscription Status */}
+          {/* Plan & Subscription */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Subscription Status</Text>
+            <View style={styles.subscriptionHeader}>
+              <View>
+                <Text style={styles.planTitle}>Plan & Subscription</Text>
+                <Text style={styles.planSubtitle}>Manage your subscription and billing</Text>
+              </View>
+            </View>
 
             {/* Debug info - remove in production */}
-            {__DEV__ && (
+            {/* {__DEV__ && (
               <Text style={{ fontSize: 10, color: '#999', marginBottom: 8 }}>
                 Debug: paymentPlan = {userProfile?.paymentPlan || 'null'}
               </Text>
-            )}
+            )} */}
 
-            {userProfile?.paymentPlan ? (
-              // User has a subscription (Premium)
+            {userProfile?.paymentPlan && !userProfile.paymentPlan.toLowerCase().includes('free') ? (
+              // User has a subscription
               <>
-                <View style={styles.proBadgeContainer}>
-                  <View style={styles.proBadge}>
-                    <Icon name="star" size={16} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.proBadgeText}>Premium</Text>
-                  </View>
-                </View>
+                {(() => {
+                  try {
+                    const expiryDate = new Date(userProfile.paymentExpiryDate);
+                    const today = new Date();
+                    const diffTime = expiryDate - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const isActive = diffDays > 0;
 
-                <View style={styles.subscriptionDetails}>
-                  <View style={styles.subscriptionRow}>
-                    <Text style={styles.subscriptionLabel}>Plan</Text>
-                    <Text style={styles.subscriptionValue}>
-                      {userProfile.paymentPlan.includes('Monthly') ? 'Monthly' : 'Premium'}
-                    </Text>
-                  </View>
-                  {userProfile.paymentExpiryDate && (
-                    <View style={[styles.subscriptionRow, { borderBottomWidth: 0 }]}>
-                      <Text style={styles.subscriptionLabel}>Expires</Text>
-                      <Text style={styles.subscriptionValue}>
-                        {(() => {
-                          try {
-                            // Handle date format: "12/19/2025 5:50:04 AM +00:00"
-                            const dateStr = userProfile.paymentExpiryDate;
-                            const date = new Date(dateStr);
-                            if (isNaN(date.getTime())) {
-                              // Fallback: extract just the date part
-                              const parts = dateStr.split(' ');
-                              return parts[0] || dateStr;
-                            }
-                            return date.toLocaleDateString();
-                          } catch (e) {
-                            return userProfile.paymentExpiryDate;
-                          }
-                        })()}
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                    return (
+                      <>
+                        <View style={styles.planNameRow}>
+                          <View>
+                            <Text style={styles.currentPlanLabel}>Current Plan</Text>
+                            <Text style={styles.planNameValue}>
+                              {userProfile.paymentPlan.toLowerCase().includes('enterprise') ? 'Enterprise' :
+                                userProfile.paymentPlan.toLowerCase().includes('monthly') ? 'Monthly' : 'Premium'}
+                            </Text>
+                          </View>
+                          {isActive && (
+                            <View style={styles.activeBadge}>
+                              <Text style={styles.activeBadgeText}>Active</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.expiryInfoContainer}>
+                          <Text style={styles.remainingDaysText}>
+                            {isActive ? `${diffDays} days Remaining` : 'Expired'}
+                          </Text>
+                          <Text style={styles.expiryDateText}>
+                            Plan expires on {(() => {
+                              try {
+                                const date = new Date(userProfile.paymentExpiryDate);
+                                if (isNaN(date.getTime())) return userProfile.paymentExpiryDate;
+
+                                // Format: Dec 22, 2030, 05:02 PM
+                                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                const month = monthNames[date.getMonth()];
+                                const day = date.getDate();
+                                const year = date.getFullYear();
+                                let hours = date.getHours();
+                                const minutes = date.getMinutes().toString().padStart(2, '0');
+                                const ampm = hours >= 12 ? 'PM' : 'AM';
+                                hours = hours % 12;
+                                hours = hours ? hours : 12; // the hour '0' should be '12'
+                                const strTime = hours.toString().padStart(2, '0') + ':' + minutes + ' ' + ampm;
+
+                                return `${month} ${day}, ${year}, ${strTime}`;
+                              } catch (e) {
+                                return userProfile.paymentExpiryDate;
+                              }
+                            })()}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.upgradeButton, { marginTop: 16 }]}
+                          onPress={() => navigation.navigate('Subscription')}
+                        >
+                          <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
+                          <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
+                        </TouchableOpacity>
+                      </>
+                    );
+                  } catch (e) {
+                    return <Text>Error loading subscription info</Text>;
+                  }
+                })()}
               </>
             ) : (
               // User is on Free plan
@@ -406,7 +494,7 @@ const ProfileScreen = () => {
           {/* Linked Accounts */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Linked Accounts</Text>
-            <Text style={styles.cardSubtitle}>Manage your linked social accounts</Text>
+            {/* <Text style={styles.cardSubtitle}>Manage your linked social accounts</Text> */}
 
             {['google', 'apple'].map((provider) => {
               // Parse linked_accounts if it's a string (from JWT)
@@ -432,6 +520,7 @@ const ProfileScreen = () => {
               console.log(`👤 Checking ${provider} - linked_accounts:`, userProfile?.linked_accounts);
               console.log(`👤 Parsed array:`, linkedAccountsArray);
               console.log(`👤 ${provider} isLinked:`, isLinked);
+              console.log(`👤 Full userProfile state:`, JSON.stringify(userProfile, null, 2));
 
               return (
                 <View key={provider} style={styles.accountRow}>
@@ -478,7 +567,7 @@ const ProfileScreen = () => {
               <Text style={styles.linkButtonText}>Privacy Policy & Face Data Usage</Text>
             </TouchableOpacity>
             <Text style={styles.privacyNote}>
-              We use facial recognition to analyze photos and match them against our criminal database.
+              We use facial recognition to analyze photos and match them against our Public Safety database.
               Face data is processed securely on our servers and is not permanently stored on your device.
             </Text>
           </View>
@@ -747,6 +836,69 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textDecorationLine: 'underline',
+  },
+  // New Subscription Styles
+  subscriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  planTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  planSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  planNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  currentPlanLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  planNameValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#000',
+  },
+  activeBadge: {
+    backgroundColor: '#e6f7ed',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  activeBadgeText: {
+    color: '#28a745',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  expiryInfoContainer: {
+    backgroundColor: '#f0fff4',
+    borderWidth: 1,
+    borderColor: '#b7eb8f',
+    borderRadius: 10,
+    padding: 16,
+  },
+  remainingDaysText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#28a745',
+    marginBottom: 8,
+  },
+  expiryDateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
   },
 });
 
