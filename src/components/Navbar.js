@@ -14,6 +14,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import Toast from 'react-native-toast-message';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Navbar = () => {
   const navigation = useNavigation();
@@ -81,16 +82,18 @@ const Navbar = () => {
             {!user ? (
               <>
                 <TouchableOpacity
-                  onPress={() => {
+                  onPress={async () => {
                     setMenuVisible(false);
+                    await AsyncStorage.removeItem('redirectToSubscription');
                     navigation.navigate('AuthLogin');
                   }}
                 >
                   <Text style={styles.dropdownItem}>Login</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => {
+                  onPress={async () => {
                     setMenuVisible(false);
+                    await AsyncStorage.removeItem('redirectToSubscription');
                     navigation.navigate('AuthRegister');
                   }}
                 >

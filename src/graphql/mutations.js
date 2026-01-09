@@ -84,6 +84,9 @@ export const GET_ME = gql`
       name
       linked_accounts
       pendingLookups
+      paymentPlan
+      paymentDate
+      paymentExpiryDate
     }
   }
 `;

@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { jwtDecode } from 'jwt-decode';
+import { AppState } from 'react-native';
 
 import authEvents, { AUTH_EVENTS } from '../utils/authEvents';
 
@@ -8,15 +10,38 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const appState = useRef(AppState.currentState);
 
   // Restore session from AsyncStorage on app start
   useEffect(() => {
+    const checkTokenExpiry = async () => {
+      try {
+        const accessToken = await AsyncStorage.getItem('accessToken');
+        if (accessToken) {
+          const decoded = jwtDecode(accessToken);
+          const currentTime = Date.now() / 1000;
+          if (decoded.exp && decoded.exp < currentTime) {
+            console.log('[AuthContext] Session expired (foreground check), logging out');
+            await logout();
+            return true; // Expired
+          }
+        }
+      } catch (e) {
+        console.log('[AuthContext] Token check failed:', e);
+      }
+      return false; // Not expired or no token
+    };
+
     const restoreSession = async () => {
       try {
         const accessToken = await AsyncStorage.getItem('accessToken');
         const savedUserData = await AsyncStorage.getItem('userData');
 
         if (accessToken) {
+          // Check if token is expired
+          const isExpired = await checkTokenExpiry();
+          if (isExpired) return;
+
           // Clear any stale redirect flags when session is restored
           // This prevents unwanted redirects from previous sessions
           await AsyncStorage.removeItem('redirectToSubscription');
@@ -58,8 +83,21 @@ export const AuthProvider = ({ children }) => {
 
     authEvents.on(AUTH_EVENTS.LOGOUT, logoutListener);
 
+    // AppState listener to check token when coming to foreground
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('[AuthContext] App came to foreground, checking token...');
+        checkTokenExpiry();
+      }
+      appState.current = nextAppState;
+    });
+
     return () => {
       authEvents.off(AUTH_EVENTS.LOGOUT, logoutListener);
+      subscription.remove();
     };
   }, []);
 
@@ -74,17 +112,72 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+
+  // ...
+
   const logout = async () => {
-    await AsyncStorage.removeItem('accessToken');
-    await AsyncStorage.removeItem('refreshToken');
-    await AsyncStorage.removeItem('apiKey');
-    await AsyncStorage.removeItem('userData');
-    await AsyncStorage.removeItem('currentUserId');
-    setUser(null);
+    try {
+      await AsyncStorage.multiRemove([
+        'accessToken',
+        'refreshToken',
+        'mfaToken',
+        'apiKey',
+        'userData',
+        'currentUserId',
+        'redirectToSubscription'
+      ]);
+
+
+      setUser(null);
+      console.log('[AuthContext] Logged out and cleared storage');
+    } catch (error) {
+      console.log('[AuthContext] Error during logout storage clearing:', error);
+      // Still set user to null to update UI
+      setUser(null);
+    }
+  };
+
+  const refreshUser = async () => {
+    try {
+      const accessToken = await AsyncStorage.getItem('accessToken');
+      const savedUserData = await AsyncStorage.getItem('userData');
+
+      if (accessToken) {
+        // Try to decode token for fresh claims
+        try {
+          const decoded = jwtDecode(accessToken);
+          // If we have saved user data, merge it with token data
+          let finalUser = {};
+
+          if (savedUserData) {
+            try {
+              finalUser = JSON.parse(savedUserData);
+            } catch (e) { }
+          }
+
+          // Token claims take precedence for plan/expiry
+          finalUser = {
+            ...finalUser,
+            paymentPlan: decoded.paymentPlan,
+            paymentExpiryDate: decoded.paymentExpiryDate,
+            pendingLookups: decoded.pendingLookups // if available in token
+          };
+
+          setUser(finalUser);
+          // Update stored user data
+          await AsyncStorage.setItem('userData', JSON.stringify(finalUser));
+          console.log('[AuthContext] User refreshed from token/storage');
+        } catch (e) {
+          console.log('[AuthContext] Failed to decode token during refresh:', e);
+        }
+      }
+    } catch (error) {
+      console.log('[AuthContext] Error refreshing user:', error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, setUser: login, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, refreshUser, setUser: login, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

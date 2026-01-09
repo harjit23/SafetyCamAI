@@ -43,6 +43,49 @@ const STATUS_SUBSCRIPTION = gql`
 // ------------------ Helpers ------------------
 const normalizeFsPath = (uri) => uri || uri; // keep as-is for RN fetch FormData
 
+// Robust date parsing helper
+const parseDate = (dateStr) => {
+  if (!dateStr) return new Date(NaN);
+  
+  // Try standard parsing first
+  let date = new Date(dateStr);
+  if (!isNaN(date.getTime())) return date;
+
+  try {
+    // Handle "MM/DD/YYYY HH:MM:SS AM/PM [Offset]"
+    // Example: "12/27/2025 5:50:04 AM +00:00"
+    const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})\s+(AM|PM)\s+([+-]\d{2}:\d{2}|Z)?/i);
+    
+    if (match) {
+      let [_, m, d, y, h, min, s, ampm, offset] = match;
+      m = parseInt(m, 10);
+      d = parseInt(d, 10);
+      y = parseInt(y, 10);
+      h = parseInt(h, 10);
+      min = parseInt(min, 10);
+      s = parseInt(s, 10);
+      
+      if (ampm.toUpperCase() === 'PM' && h < 12) h += 12;
+      if (ampm.toUpperCase() === 'AM' && h === 12) h = 0;
+
+      // Construct ISO string: YYYY-MM-DDTHH:MM:SS
+      const isoBase = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      
+      if (offset) {
+        if (offset.toUpperCase() === 'Z') offset = '+00:00';
+        date = new Date(isoBase + offset);
+      } else {
+        // Fallback to local time
+        date = new Date(y, m - 1, d, h, min, s);
+      }
+      return date;
+    }
+  } catch (e) {
+    console.warn('parseDate regex failed:', e);
+  }
+  return new Date(NaN);
+};
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -57,6 +100,7 @@ export default function HomeScreen() {
   // attempts UI state
   const [remainingAttempts, setRemainingAttempts] = useState(null);
   const [attemptsResetAt, setAttemptsResetAt] = useState(null);
+  const [paymentPlan, setPaymentPlan] = useState(null);
 
   const subObserverRef = useRef(null);
   const subIdRef = useRef(null);
@@ -152,11 +196,32 @@ export default function HomeScreen() {
     (errorsArray) => {
       if (__DEV__) console.log('[GQL errors]', JSON.stringify(errorsArray, null, 2));
       const message = errorsArray?.[0]?.message || 'Upload failed';
-      if (
+      
+      const isLimitError = 
         message.toLowerCase().includes('weekly free trial') ||
-        message.toLowerCase().includes('weekly api hit limit exceeded')
-      ) {
-        showAlert(message);
+        message.toLowerCase().includes('weekly api hit limit exceeded') ||
+        message.toLowerCase().includes('free trial limit exceeded') ||
+        message.toLowerCase().includes('free trial expired');
+
+      if (isLimitError) {
+        const isGuest = !user;
+        
+        Toast.show({
+          type: 'error',
+          text1: 'Limit Reached',
+          text2: isGuest ? 'Please log in to subscribe.' : 'Redirecting to plans...',
+          visibilityTime: 3000,
+        });
+        
+        // Redirect after a delay
+        setTimeout(async () => {
+          if (isGuest) {
+            await AsyncStorage.setItem('redirectToSubscription', 'true');
+            navigation.navigate('AuthLogin');
+          } else {
+            navigation.navigate('Subscription');
+          }
+        }, 2500);
       } else {
         Toast.show({ type: 'error', text1: 'Error', text2: message });
       }
@@ -164,7 +229,7 @@ export default function HomeScreen() {
       resetToUpload();
       fetchPending();
     },
-    [resetToUpload, unsubscribeStatus, showAlert],
+    [resetToUpload, unsubscribeStatus, navigation, fetchPending, user],
   );
 
   const getUserId = useCallback(async () => {
@@ -218,11 +283,38 @@ export default function HomeScreen() {
       setRemainingAttempts(attempts);
       setAttemptsResetAt(pending?.lastDate ?? null);
 
+      // Extract plan from token if available
+      if (token) {
+        try {
+          const decoded = jwtDecode(token);
+          setPaymentPlan(decoded.paymentPlan || null);
+        } catch (e) {
+          console.warn('Failed to decode token for plan:', e);
+        }
+      } else {
+        setPaymentPlan(null);
+      }
+
       // 🔍 Log remaining attempts and plan type (Safe logging)
       try {
         const token = await AsyncStorage.getItem('accessToken');
-        const planType = token ? jwtDecode(token).paymentPlan : 'Guest';
-        console.log(`📊 [HomeScreen] Plan: ${planType} | Remaining Attempts: ${attempts}`);
+        if (token) {
+          const decoded = jwtDecode(token);
+          const expiry = parseDate(decoded.paymentExpiryDate);
+          const now = new Date();
+          const isExpired = isNaN(expiry.getTime()) || now > expiry;
+          
+          console.log('--- 📊 Plan Status Calculation [HomeScreen] ---');
+          console.log('Plan:', decoded.paymentPlan);
+          console.log('Raw Expiry Date:', decoded.paymentExpiryDate);
+          console.log('Parsed Expiry Date:', isNaN(expiry.getTime()) ? 'Invalid Date' : expiry.toLocaleString());
+          console.log('Current Date:', now.toLocaleString());
+          console.log('Is Expired:', isExpired);
+          console.log('Remaining Attempts (from backend):', attempts);
+          console.log('-----------------------------------------------');
+        } else {
+          console.log(`📊 [HomeScreen] Plan: Guest | Remaining Attempts: ${attempts}`);
+        }
       } catch (logError) {
         console.log('📊 [HomeScreen] Remaining Attempts:', attempts);
       }
@@ -235,6 +327,17 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => { fetchPending(); }, [fetchPending]));
   useEffect(() => { if (state === 'upload') fetchPending(); }, [state, fetchPending]);
+
+  // Clear redirection flag when Home screen is focused
+  // This prevents unwanted redirects if the user backed out of the auth flow
+  useFocusEffect(
+    useCallback(() => {
+      const clearRedirectFlag = async () => {
+        await AsyncStorage.removeItem('redirectToSubscription');
+      };
+      clearRedirectFlag();
+    }, [])
+  );
 
   // ---- Foreground GraphQL multipart upload (ordered & with preflight header) ----
   const uploadViaFetchGraphql = useCallback(async ({ file, subscriptionId, apiKeyToSend }) => {
@@ -329,6 +432,7 @@ export default function HomeScreen() {
         const isLimitError = 
           msg.toLowerCase().includes('weekly free trial') ||
           msg.toLowerCase().includes('weekly api hit limit exceeded') ||
+          msg.toLowerCase().includes('free trial limit exceeded') ||
           msg.toLowerCase().includes('free trial expired');
 
         if (isLimitError) {
@@ -459,7 +563,7 @@ export default function HomeScreen() {
 
           {(!image || state === 'upload') && <UploadBox onUpload={handleImageSelect} />}
 
-          {remainingAttempts !== null && (
+          {remainingAttempts !== null && !paymentPlan?.toLowerCase().includes('enterprise') && (
             <Text style={styles.attemptsText}>Remaining Attempts: {remainingAttempts}</Text>
           )}
 

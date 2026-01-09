@@ -9,6 +9,7 @@ import {
   Linking,
   StatusBar,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useMutation, useQuery } from '@apollo/client';
@@ -19,17 +20,33 @@ import Toast from 'react-native-toast-message';
 
 import { useAuth } from '../context/AuthContext';
 import { jwtDecode } from 'jwt-decode';
-import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION } from '../graphql/mutations'; // Imported GET_ME and VERIFY_RECEIPT_MUTATION
+import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN } from '../graphql/mutations'; // Imported GET_ME, VERIFY_RECEIPT_MUTATION, and REFRESH_TOKEN
 import { client } from '../apollo/client';
 import Navbar from '../components/Navbar';
 import { Platform } from 'react-native';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [deleteUser] = useMutation(DELETE_USER);
   const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
+  const [refreshTokenMutation] = useMutation(REFRESH_TOKEN);
   const itemSkus = ['com.safetycamai.monthly'];
+
+  // Sync local state with Context User when it changes (e.g. after refreshUser)
+  useEffect(() => {
+    if (user) {
+      console.log('👤 Syncing Profile with Context User:', user);
+      setUserProfile(prev => ({
+        ...prev,
+        ...user,
+        // Ensure we don't overwrite with nulls if context user is partial
+        paymentPlan: user.paymentPlan || prev.paymentPlan,
+        paymentExpiryDate: user.paymentExpiryDate || prev.paymentExpiryDate,
+        pendingLookups: user.pendingLookups !== undefined ? user.pendingLookups : prev.pendingLookups
+      }));
+    }
+  }, [user]);
 
   // Auth check
   useFocusEffect(
@@ -43,6 +60,8 @@ const ProfileScreen = () => {
       checkAuth();
     }, [user, navigation])
   );
+
+
 
   // Handle Restore Purchase
   const handleRestorePurchase = async () => {
@@ -101,6 +120,24 @@ const ProfileScreen = () => {
 
       if (data?.verifyApplePayment === true) {
         console.log('✅ Restore successful!');
+
+        // Refresh token to get updated claims
+        try {
+          const token = await AsyncStorage.getItem('accessToken');
+          const refreshToken = await AsyncStorage.getItem('refreshToken');
+          if (token && refreshToken) {
+            console.log('🔄 Refreshing token after restore...');
+            const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
+            if (refreshData?.refreshToken) {
+              await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
+              await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
+              console.log('✅ Token refreshed after restore');
+            }
+          }
+        } catch (refreshErr) {
+          console.warn('Failed to refresh token after restore:', refreshErr);
+        }
+
         Toast.show({
           type: 'success',
           text1: 'Restore Successful',
@@ -135,6 +172,51 @@ const ProfileScreen = () => {
     linked_accounts: [],
     paymentPlan: null
   });
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Robust date parsing helper
+  const parseDate = (dateStr) => {
+    if (!dateStr) return new Date(NaN);
+
+    // Try standard parsing first
+    let date = new Date(dateStr);
+    if (!isNaN(date.getTime())) return date;
+
+    try {
+      // Handle "MM/DD/YYYY HH:MM:SS AM/PM [Offset]"
+      // Example: "12/27/2025 5:50:04 AM +00:00"
+      const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})\s+(AM|PM)\s+([+-]\d{2}:\d{2}|Z)?/i);
+
+      if (match) {
+        let [_, m, d, y, h, min, s, ampm, offset] = match;
+        m = parseInt(m, 10);
+        d = parseInt(d, 10);
+        y = parseInt(y, 10);
+        h = parseInt(h, 10);
+        min = parseInt(min, 10);
+        s = parseInt(s, 10);
+
+        if (ampm.toUpperCase() === 'PM' && h < 12) h += 12;
+        if (ampm.toUpperCase() === 'AM' && h === 12) h = 0;
+
+        // Construct ISO string: YYYY-MM-DDTHH:MM:SS
+        const isoBase = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+        if (offset) {
+          if (offset.toUpperCase() === 'Z') offset = '+00:00';
+          date = new Date(isoBase + offset);
+        } else {
+          // Fallback to local time
+          date = new Date(y, m - 1, d, h, min, s);
+        }
+        return date;
+      }
+    } catch (e) {
+      console.warn('parseDate regex failed:', e);
+    }
+    return new Date(NaN);
+  };
 
   // Load from token on mount to avoid waiting for GET_ME
   useEffect(() => {
@@ -194,6 +276,30 @@ const ProfileScreen = () => {
         console.log('👤 User Profile Data:', data.me);
         console.log('👤 Linked Accounts:', data.me.linked_accounts);
 
+        // 🔍 Log remaining attempts and plan type (Safe logging)
+        try {
+          const token = await AsyncStorage.getItem('accessToken');
+          if (token) {
+            const decoded = jwtDecode(token);
+            const expiry = parseDate(decoded.paymentExpiryDate);
+            const now = new Date();
+            const isExpired = isNaN(expiry.getTime()) || now > expiry;
+
+            console.log('--- 📊 Plan Status Calculation [ProfileScreen] ---');
+            console.log('Plan:', decoded.paymentPlan);
+            console.log('Raw Expiry Date:', decoded.paymentExpiryDate);
+            console.log('Parsed Expiry Date:', isNaN(expiry.getTime()) ? 'Invalid Date' : expiry.toLocaleString());
+            console.log('Current Date:', now.toLocaleString());
+            console.log('Is Expired:', isExpired);
+            console.log('Remaining Attempts (from backend):', data.me.pendingLookups);
+            console.log('-----------------------------------------------');
+          } else {
+            console.log(`📊 [ProfileScreen] Plan: Guest | Remaining Attempts: ${data.me.pendingLookups}`);
+          }
+        } catch (logError) {
+          console.warn('Failed to log payment status from token:', logError);
+        }
+
         // Get payment info from token (GET_ME doesn't return payment info)
         let paymentInfo = {};
         try {
@@ -213,10 +319,12 @@ const ProfileScreen = () => {
         }
 
         // Merge GET_ME data with payment info from token
+        // Priority: data.me (latest from DB) > paymentInfo (from token)
         setUserProfile(prev => {
           const updated = {
-            ...data.me,
+            ...prev,
             ...paymentInfo,
+            ...data.me,
           };
           // 🔍 Log remaining attempts and plan type
           console.log(`📊 [ProfileScreen] Plan: ${updated.paymentPlan || 'Free'} | Remaining Attempts: ${updated.pendingLookups ?? 'N/A'}`);
@@ -249,12 +357,46 @@ const ProfileScreen = () => {
     }
   });
 
-  // Refetch data when screen comes into focus (e.g. returning from linking)
+
+  // Refetch data when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      refetch();
-    }, [refetch])
+      const refreshProfile = async () => {
+        // 1. Refresh from local token/storage (fast)
+        await refreshUser();
+        // 2. Refresh from network (slower, might fail)
+        try {
+          await refetch();
+        } catch (e) {
+          console.log('Profile focus refetch failed (non-fatal):', e);
+        }
+      };
+      refreshProfile();
+    }, [refetch, refreshUser])
   );
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // 1. Refresh from local token first
+      await refreshUser();
+
+      // 2. Refresh from network
+      await refetch();
+
+      Toast.show({ type: 'success', text1: 'Refreshed', text2: 'Profile updated successfully' });
+    } catch (e) {
+      console.error('Refresh failed:', e);
+      // If network failed but we have user data, show a warning instead of error
+      if (user) {
+        Toast.show({ type: 'info', text1: 'Network Issue', text2: 'Showing cached profile data' });
+      } else {
+        Toast.show({ type: 'error', text1: 'Refresh Failed', text2: 'Could not update profile' });
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, refreshUser, user]);
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -328,7 +470,12 @@ const ProfileScreen = () => {
       <Navbar />
       <LinearGradient colors={['#007bff', '#67b0fa']} style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#007bff" />
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
 
           {/* Profile Card */}
           <View style={styles.card}>
@@ -393,11 +540,21 @@ const ProfileScreen = () => {
               <>
                 {(() => {
                   try {
-                    const expiryDate = new Date(userProfile.paymentExpiryDate);
+                    const dateStr = userProfile.paymentExpiryDate;
+                    const expiryDate = parseDate(dateStr);
                     const today = new Date();
-                    const diffTime = expiryDate - today;
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    const isActive = diffDays > 0;
+                    const diffTime = expiryDate.getTime() - today.getTime();
+                    const diffDays = isNaN(diffTime) ? 0 : Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const isActive = !isNaN(diffTime) && diffTime > 0;
+
+                    console.log('--- 📊 Plan Status Rendering [ProfileScreen] ---');
+                    console.log('Plan:', userProfile.paymentPlan);
+                    console.log('Raw Expiry Date:', dateStr);
+                    console.log('Parsed Expiry Date:', isNaN(expiryDate.getTime()) ? 'Invalid Date' : expiryDate.toLocaleString());
+                    console.log('Current Date:', today.toLocaleString());
+                    console.log('Is Active:', isActive);
+                    console.log('Remaining Tasks (from backend):', userProfile.pendingLookups);
+                    console.log('--------------------------------------------------');
 
                     return (
                       <>
@@ -406,9 +563,15 @@ const ProfileScreen = () => {
                             <Text style={styles.currentPlanLabel}>Current Plan</Text>
                             <Text style={styles.planNameValue}>
                               {userProfile.paymentPlan.toLowerCase().includes('enterprise') ? 'Enterprise' :
-                                userProfile.paymentPlan.toLowerCase().includes('monthly') ? 'Monthly' : 'Premium'}
+                                userProfile.paymentPlan.toLowerCase().includes('monthly') ? 'Monthly' :
+                                  userProfile.paymentPlan.toLowerCase().includes('premium') ? 'Premium' : 'Active Plan'}
                             </Text>
                           </View>
+                          {!isActive && (
+                            <View style={styles.inactiveBadge}>
+                              <Text style={styles.inactiveBadgeText}>Inactive</Text>
+                            </View>
+                          )}
                           {isActive && (
                             <View style={styles.activeBadge}>
                               <Text style={styles.activeBadgeText}>Active</Text>
@@ -417,16 +580,15 @@ const ProfileScreen = () => {
                         </View>
 
                         <View style={styles.expiryInfoContainer}>
-                          <Text style={styles.remainingDaysText}>
-                            {isActive ? `${diffDays} days Remaining` : 'Expired'}
+                          <Text style={[styles.remainingDaysText, !isActive && { color: '#dc3545' }]}>
+                            {isActive ? `${diffDays} days Remaining` : 'Inactive'}
                           </Text>
                           <Text style={styles.expiryDateText}>
-                            Plan expires on {(() => {
+                            Plan {isActive ? 'expires' : 'expired'} on {(() => {
                               try {
-                                const date = new Date(userProfile.paymentExpiryDate);
-                                if (isNaN(date.getTime())) return userProfile.paymentExpiryDate;
+                                const date = parseDate(userProfile.paymentExpiryDate);
+                                if (isNaN(date.getTime())) return userProfile.paymentExpiryDate || 'N/A';
 
-                                // Format: Dec 22, 2030, 05:02 PM
                                 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                                 const month = monthNames[date.getMonth()];
                                 const day = date.getDate();
@@ -435,24 +597,36 @@ const ProfileScreen = () => {
                                 const minutes = date.getMinutes().toString().padStart(2, '0');
                                 const ampm = hours >= 12 ? 'PM' : 'AM';
                                 hours = hours % 12;
-                                hours = hours ? hours : 12; // the hour '0' should be '12'
+                                hours = hours ? hours : 12;
                                 const strTime = hours.toString().padStart(2, '0') + ':' + minutes + ' ' + ampm;
 
                                 return `${month} ${day}, ${year}, ${strTime}`;
                               } catch (e) {
+                                console.error('Date formatting error:', e);
                                 return userProfile.paymentExpiryDate;
                               }
                             })()}
                           </Text>
                         </View>
 
-                        <TouchableOpacity
-                          style={[styles.upgradeButton, { marginTop: 16 }]}
-                          onPress={() => navigation.navigate('Subscription')}
-                        >
-                          <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
-                          <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
-                        </TouchableOpacity>
+                        <View style={styles.buttonRow}>
+                          {!isActive && (
+                            <TouchableOpacity
+                              style={[styles.reactivateButton, { flex: 1, marginRight: 8 }]}
+                              onPress={() => navigation.navigate('Subscription')}
+                            >
+                              <Icon name="refresh" size={16} color="#fff" style={{ marginRight: 8 }} />
+                              <Text style={styles.upgradeButtonText}>Reactivate Plan</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={[styles.upgradeButton, { flex: 1 }]}
+                            onPress={() => navigation.navigate('Subscription')}
+                          >
+                            <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
+                            <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
+                          </TouchableOpacity>
+                        </View>
                       </>
                     );
                   } catch (e) {
@@ -899,6 +1073,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+  inactiveBadge: {
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  inactiveBadgeText: {
+    color: '#666',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  reactivateButton: {
+    flexDirection: 'row',
+    backgroundColor: '#007bff',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

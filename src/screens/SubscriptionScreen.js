@@ -20,14 +20,18 @@ import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { VERIFY_RECEIPT_MUTATION } from '../graphql/mutations';
+import { VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN } from '../graphql/mutations';
 import { useLoader } from '../context/LoaderContext';
+
+import { useAuth } from '../context/AuthContext';
 
 const itemSkus = ['com.safetycamai.monthly'];
 
 export default function SubscriptionScreen() {
     const navigation = useNavigation();
+    const { refreshUser } = useAuth();
     const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
+    const [refreshTokenMutation] = useMutation(REFRESH_TOKEN);
     const { showLoader, hideLoader } = useLoader();
     const [processing, setProcessing] = useState(false);
     const [products, setProducts] = useState([]);
@@ -109,6 +113,28 @@ export default function SubscriptionScreen() {
 
                 if (data?.verifyApplePayment === true) {
                     console.log('✅ Receipt verified successfully');
+
+                    // Refresh token to get updated claims
+                    // Refresh token to get updated claims
+                    try {
+                        const token = await AsyncStorage.getItem('accessToken');
+                        const refreshToken = await AsyncStorage.getItem('refreshToken');
+                        if (token && refreshToken) {
+                            console.log('🔄 Refreshing token after purchase...');
+                            const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
+                            if (refreshData?.refreshToken) {
+                                await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
+                                await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
+                                console.log('✅ Token refreshed after purchase');
+
+                                // Update global user state
+                                await refreshUser();
+                            }
+                        }
+                    } catch (refreshErr) {
+                        console.warn('Failed to refresh token after purchase:', refreshErr);
+                    }
+
                     await RNIap.finishTransaction({ purchase, isConsumable: false });
                     Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription activated successfully!' });
                     isUserInitiatedRef.current = false;
@@ -214,6 +240,24 @@ export default function SubscriptionScreen() {
             const { data } = await verifyReceipt({ variables: { receipt } });
 
             if (data?.verifyApplePayment === true) {
+                // Refresh token to get updated claims
+                // Refresh token to get updated claims
+                try {
+                    const token = await AsyncStorage.getItem('accessToken');
+                    const refreshToken = await AsyncStorage.getItem('refreshToken');
+                    if (token && refreshToken) {
+                        console.log('🔄 Refreshing token after restore...');
+                        const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
+                        if (refreshData?.refreshToken) {
+                            await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
+                            await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
+                            console.log('✅ Token refreshed after restore');
+                        }
+                    }
+                } catch (refreshErr) {
+                    console.warn('Failed to refresh token after restore:', refreshErr);
+                }
+
                 Toast.show({ type: 'success', text1: 'Restore Successful', text2: 'Your premium access has been restored.' });
                 setTimeout(() => navigation.navigate('Home'), 1500);
             } else {
@@ -227,13 +271,13 @@ export default function SubscriptionScreen() {
         }
     };
 
-    const handleStripePayment = async () => {
-        const STRIPE_PAYMENT_URL = 'https://safetycamai.com';
+    const handleManageAccount = async () => {
+        const ACCOUNT_URL = 'https://safetycamai.com';
         try {
-            const canOpen = await Linking.canOpenURL(STRIPE_PAYMENT_URL);
-            if (canOpen) await Linking.openURL(STRIPE_PAYMENT_URL);
+            const canOpen = await Linking.canOpenURL(ACCOUNT_URL);
+            if (canOpen) await Linking.openURL(ACCOUNT_URL);
         } catch (error) {
-            Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open payment page' });
+            Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open account page' });
         }
     };
 
@@ -302,10 +346,10 @@ export default function SubscriptionScreen() {
                                     )}
                                 </TouchableOpacity>
 
-                                <TouchableOpacity style={styles.stripeButton} onPress={handleStripePayment}>
+                                <TouchableOpacity style={styles.manageAccountButton} onPress={handleManageAccount}>
                                     <View style={styles.buttonContent}>
-                                        <Icon name="cc-stripe" size={20} color="#fff" />
-                                        <Text style={styles.stripeText}>Pay Via Stripe</Text>
+                                        <Icon name="user" size={20} color="#fff" />
+                                        <Text style={styles.manageAccountText}>Manage Account</Text>
                                     </View>
                                 </TouchableOpacity>
 
@@ -371,8 +415,8 @@ const styles = StyleSheet.create({
     buttonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
     applePayButton: { backgroundColor: '#000', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
     applePayText: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 10 },
-    stripeButton: { backgroundColor: '#635BFF', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
-    stripeText: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 10 },
+    manageAccountButton: { backgroundColor: '#635BFF', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+    manageAccountText: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 10 },
     cancelButton: {
         backgroundColor: 'transparent',
         paddingVertical: 14,

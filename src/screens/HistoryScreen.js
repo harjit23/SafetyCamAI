@@ -232,7 +232,7 @@ export default function HistoryScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.resultName}>{r.name}</Text>
                         <Text style={styles.resultConfidence}>
-                          Confidence: {(r.confidence * 100).toFixed(2)}%
+                          Similarity Score: {(r.confidence * 100).toFixed(2)}%
                         </Text>
 
                         {!!r.url && (
@@ -242,7 +242,7 @@ export default function HistoryScreen() {
                             }
                             style={{ marginTop: 6 }}
                           >
-                            <Text style={styles.resultUrl}>View Profile</Text>
+                            <Text style={styles.resultUrl}>View Source</Text>
                           </TouchableOpacity>
                         )}
                       </View>

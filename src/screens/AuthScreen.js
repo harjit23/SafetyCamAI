@@ -196,7 +196,10 @@ export default function AuthScreen() {
         
         {/* Back Button */}
         <TouchableOpacity 
-          onPress={() => navigation.navigate('Home')} 
+          onPress={async () => {
+            await AsyncStorage.removeItem('redirectToSubscription');
+            navigation.navigate('Home');
+          }} 
           style={styles.backButton}
         >
           <Icon name="arrow-left" size={24} color="#fff" />
