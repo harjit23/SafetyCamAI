@@ -188,7 +188,7 @@ const MatchList = ({ image, results = [], onSelectImage, onReset }) => {
                       disabled={!hasUrl}
                       onPress={() =>
                         hasUrl &&
-                        navigation.navigate('MugshotWebView', { url: item.url })
+                        navigation.navigate('SourceWebView', { url: item.url })
                       }
                     >
                       <Text style={styles.buttonText}>

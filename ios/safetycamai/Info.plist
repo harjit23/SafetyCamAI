@@ -45,7 +45,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>SafetyCam AI needs camera access so you can take a photo of a person to check against our public safety database. For example, you can take a photo of a visitor to verify their identity. The facial data is processed securely and not stored on your device.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>SafetyCam AI uses facial recognition technology to analyze uploaded photos and match them against our criminal suspect database. Face data is transmitted securely to our servers for processing and is not permanently stored on your device. This helps identify potential safety risks.</string>
+	<string>SafetyCam AI uses facial recognition technology to analyze uploaded photos and match them against our Image database. Face data is transmitted securely to our servers for processing and is not permanently stored on your device. This helps identify potential safety risks.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

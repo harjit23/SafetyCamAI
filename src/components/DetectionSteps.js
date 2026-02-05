@@ -18,9 +18,9 @@ import ImagePicker from 'react-native-image-crop-picker';
 const steps = [
   "Subscription Initialization",
   "Validating Api Key..",
-  "Loading Criminal database..",
-  "Detecting Face..",
-  "Detection Completed."
+  "Loading image database..",
+  "Analyzing image..",
+  "Analysis Completed."
 ];
 
 const requestCameraPerms = async () => {

@@ -2287,6 +2287,8 @@ PODS:
     - SocketRocket
     - TOCropViewController (~> 2.7.4)
     - Yoga
+  - RNInAppBrowser (3.7.0):
+    - React-Core
   - RNScreens (4.11.1):
     - boost
     - DoubleConversion
@@ -2435,6 +2437,7 @@ DEPENDENCIES:
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNIap (from `../node_modules/react-native-iap`)
   - RNImageCropPicker (from `../node_modules/react-native-image-crop-picker`)
+  - RNInAppBrowser (from `../node_modules/react-native-inappbrowser-reborn`)
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNVectorIcons (from `../node_modules/react-native-vector-icons`)
   - SocketRocket (~> 0.7.1)
@@ -2613,6 +2616,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-iap"
   RNImageCropPicker:
     :path: "../node_modules/react-native-image-crop-picker"
+  RNInAppBrowser:
+    :path: "../node_modules/react-native-inappbrowser-reborn"
   RNScreens:
     :path: "../node_modules/react-native-screens"
   RNVectorIcons:
@@ -2704,6 +2709,7 @@ SPEC CHECKSUMS:
   RNGestureHandler: 4e0ee6a1f04f5ac8d70c87d3c761d40a50964172
   RNIap: aa38c2cc8a2a75ba8112d161ca084a0b611955df
   RNImageCropPicker: 5f9094e3b0cf5f718276b29e22dc7598fcebe639
+  RNInAppBrowser: 6d3eb68d471b9834335c664704719b8be1bfdb20
   RNScreens: 6f26eb84a9475b21246f1a515923837771ff9be3
   RNVectorIcons: 3406e3096f8858508d293d066c6850e97d5497d2
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748

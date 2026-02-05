@@ -7,8 +7,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  Linking
+  Linking,
+  Alert,
 } from 'react-native';
+import { InAppBrowser } from 'react-native-inappbrowser-reborn';
 import { jwtDecode } from 'jwt-decode';
 import { useMutation } from '@apollo/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -138,10 +140,32 @@ export default function LoginForm({ switchTo }) {
 
       // Check if we should redirect to subscription screen
       const redirectToSubscription = await AsyncStorage.getItem('redirectToSubscription');
-      if (redirectToSubscription === 'true') {
+
+      // Check for active plan using the fresh token
+      let hasActivePlan = false;
+      try {
+        const decoded = jwtDecode(token);
+        if (decoded.paymentPlan && decoded.paymentExpiryDate) {
+          const expiry = new Date(decoded.paymentExpiryDate);
+          const now = new Date();
+          // Check if plan exists and is not expired
+          if (!isNaN(expiry.getTime()) && expiry > now) {
+            hasActivePlan = true;
+            console.log('✅ User has active plan, overriding redirect to Subscription');
+          }
+        }
+      } catch (e) {
+        console.log('Failed to check plan status from token:', e);
+      }
+
+      if (redirectToSubscription === 'true' && !hasActivePlan) {
         await AsyncStorage.removeItem('redirectToSubscription');
         navigation.navigate('Subscription');
       } else {
+        // If we were supposed to redirect but have a plan, clear the flag anyway
+        if (redirectToSubscription === 'true') {
+          await AsyncStorage.removeItem('redirectToSubscription');
+        }
         navigation.navigate('Home');
       }
     } catch (err) {
@@ -193,7 +217,7 @@ export default function LoginForm({ switchTo }) {
     }
   };
 
-  const handleSocialLogin = async provider => {
+  const handleSocialLogin = async (provider) => {
     try {
       // Store the provider so we know who to exchange with when we return
       await AsyncStorage.setItem('pendingProvider', provider);
@@ -202,7 +226,50 @@ export default function LoginForm({ switchTo }) {
       const authUrl = `${API_BASE_URL}/auth/${provider}?client=mobile&redirect_uri=${encodeURIComponent(
         redirectUri,
       )}`;
-      await Linking.openURL(authUrl);
+
+      if (await InAppBrowser.isAvailable()) {
+        const result = await InAppBrowser.openAuth(authUrl, redirectUri, {
+          // iOS Properties
+          dismissButtonStyle: 'cancel',
+          preferredBarTintColor: '#453AA4',
+          preferredControlTintColor: 'white',
+          readerMode: false,
+          animated: true,
+          modalPresentationStyle: 'fullScreen',
+          modalTransitionStyle: 'coverVertical',
+          modalEnabled: true,
+          enableBarCollapsing: false,
+          // Android Properties
+          showTitle: true,
+          toolbarColor: '#6200EE',
+          secondaryToolbarColor: 'black',
+          navigationBarColor: 'black',
+          navigationBarDividerColor: 'white',
+          enableUrlBarHiding: true,
+          enableDefaultShare: false,
+          forceCloseOnRedirection: false,
+        });
+
+        if (result.type === 'success' && result.url) {
+          // Manually trigger the deep link handling since openAuth might swallow the system Linking event
+          const deepLinkUrl = result.url;
+          // Extract code to set params if needed, or allow AuthScreen to handle it via Listener if applicable
+          // But since we are here, we can force the navigation params update which AuthScreen watches
+          const codeMatch = deepLinkUrl.match(/[?&]code=([^&]+)/);
+          const code = codeMatch ? codeMatch[1] : null;
+
+          if (code) {
+            console.log('[LoginForm] InAppBrowser Success, code found:', code);
+            // Verify if we need to manually navigate or if AuthScreen picks it up.
+            // Since AuthScreen listens to [route.params], let's update params.
+            navigation.setParams({ code, provider });
+          } else {
+            console.log('[LoginForm] InAppBrowser Success, but no code found in url:', deepLinkUrl);
+          }
+        }
+      } else {
+        await Linking.openURL(authUrl);
+      }
     } catch (error) {
       console.error('Error initiating social login:', error);
       Toast.show({

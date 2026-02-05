@@ -201,14 +201,17 @@ export default function HomeScreen() {
         message.toLowerCase().includes('weekly free trial') ||
         message.toLowerCase().includes('weekly api hit limit exceeded') ||
         message.toLowerCase().includes('free trial limit exceeded') ||
-        message.toLowerCase().includes('free trial expired');
+        message.toLowerCase().includes('free trial expired') ||
+        message.toLowerCase().includes('api key is expired');
 
       if (isLimitError) {
         const isGuest = !user;
         
+        const isApiKeyExpired = message.toLowerCase().includes('api key is expired');
+
         Toast.show({
           type: 'error',
-          text1: 'Limit Reached',
+          text1: isApiKeyExpired ? 'Plan Expired' : 'Limit Reached',
           text2: isGuest ? 'Please log in to subscribe.' : 'Redirecting to plans...',
           visibilityTime: 3000,
         });
@@ -433,15 +436,28 @@ export default function HomeScreen() {
           msg.toLowerCase().includes('weekly free trial') ||
           msg.toLowerCase().includes('weekly api hit limit exceeded') ||
           msg.toLowerCase().includes('free trial limit exceeded') ||
-          msg.toLowerCase().includes('free trial expired');
+          msg.toLowerCase().includes('free trial expired') ||
+          msg.toLowerCase().includes('api key is expired');
 
         if (isLimitError) {
-          // If guest, mark as used locally so UI updates to 0
           if (!user) {
              await AsyncStorage.setItem('guestUsedTrial', 'true');
              setRemainingAttempts(0);
           }
-          handleGraphQLErrors([{ message: msg }]);
+          
+          const isApiKeyExpired = msg.toLowerCase().includes('api key is expired');
+          
+          if (isApiKeyExpired) {
+             Toast.show({
+              type: 'error',
+              text1: 'Plan Expired',
+              text2: 'Redirecting to plans...',
+              visibilityTime: 3000,
+            });
+            setTimeout(() => navigation.navigate('Subscription'), 2500);
+          } else {
+             handleGraphQLErrors([{ message: msg }]);
+          }
         } else {
           Toast.show({ type: 'error', text1: `Server ${status}`, text2: msg });
           unsubscribeStatus();

@@ -156,16 +156,20 @@ export const AuthProvider = ({ children }) => {
           }
 
           // Token claims take precedence for plan/expiry
-          finalUser = {
+          const updatedUser = {
             ...finalUser,
             paymentPlan: decoded.paymentPlan,
             paymentExpiryDate: decoded.paymentExpiryDate,
             pendingLookups: decoded.pendingLookups // if available in token
           };
 
-          setUser(finalUser);
+          console.log('[AuthContext] 🔄 Refreshing user state. Plan:', updatedUser.paymentPlan);
+
+          // Force new object reference to trigger React updates
+          setUser({ ...updatedUser });
+
           // Update stored user data
-          await AsyncStorage.setItem('userData', JSON.stringify(finalUser));
+          await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
           console.log('[AuthContext] User refreshed from token/storage');
         } catch (e) {
           console.log('[AuthContext] Failed to decode token during refresh:', e);

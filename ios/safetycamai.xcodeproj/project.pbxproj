@@ -299,7 +299,7 @@
 				CODE_SIGN_ENTITLEMENTS = safetycamai/safetycamai.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = 8AVVF76GUH;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = safetycamai/Info.plist;
@@ -333,7 +333,7 @@
 				CODE_SIGN_ENTITLEMENTS = safetycamai/safetycamai.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = 8AVVF76GUH;
 				INFOPLIST_FILE = safetycamai/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;

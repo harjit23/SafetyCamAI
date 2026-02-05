@@ -24,6 +24,7 @@ import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN } from '../
 import { client } from '../apollo/client';
 import Navbar from '../components/Navbar';
 import { Platform } from 'react-native';
+import { ReportMisuseCard } from '../components/ReportMisuse';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
@@ -40,24 +41,41 @@ const ProfileScreen = () => {
       setUserProfile(prev => ({
         ...prev,
         ...user,
-        // Ensure we don't overwrite with nulls if context user is partial
-        paymentPlan: user.paymentPlan || prev.paymentPlan,
-        paymentExpiryDate: user.paymentExpiryDate || prev.paymentExpiryDate,
+        // FORCE overwrite payment info from context (token) as it's the source of truth for access
+        paymentPlan: user.paymentPlan,
+        paymentExpiryDate: user.paymentExpiryDate,
+        // Only use pendingLookups if it exists in token, otherwise keep existing (or from GET_ME)
         pendingLookups: user.pendingLookups !== undefined ? user.pendingLookups : prev.pendingLookups
       }));
     }
   }, [user]);
 
   // Auth check
+  // Auth check & Local Data Refresh
   useFocusEffect(
     React.useCallback(() => {
-      const checkAuth = async () => {
+      const checkAuthAndRefresh = async () => {
         const token = await AsyncStorage.getItem('accessToken');
         if (!user || !token) {
           navigation.navigate('AuthLogin');
+          return;
+        }
+
+        // Locally refresh user data from token to ensure immediate UI update after purchase
+        try {
+          const decoded = jwtDecode(token);
+          console.log('👀 Profile focused, locally updating from token:', decoded.paymentPlan);
+          setUserProfile(prev => ({
+            ...prev,
+            paymentPlan: decoded.paymentPlan,
+            paymentExpiryDate: decoded.paymentExpiryDate,
+            pendingLookups: decoded.pendingLookups !== undefined ? decoded.pendingLookups : prev.pendingLookups
+          }));
+        } catch (e) {
+          console.log('Failed to locally refresh profile from token:', e);
         }
       };
-      checkAuth();
+      checkAuthAndRefresh();
     }, [user, navigation])
   );
 
@@ -137,6 +155,9 @@ const ProfileScreen = () => {
         } catch (refreshErr) {
           console.warn('Failed to refresh token after restore:', refreshErr);
         }
+
+        // Update global user state
+        await refreshUser();
 
         Toast.show({
           type: 'success',
@@ -319,12 +340,13 @@ const ProfileScreen = () => {
         }
 
         // Merge GET_ME data with payment info from token
-        // Priority: data.me (latest from DB) > paymentInfo (from token)
+        // Priority: paymentInfo (from token) > data.me (from DB) for payment fields
+        // We trust the token more for immediate access rights
         setUserProfile(prev => {
           const updated = {
             ...prev,
-            ...paymentInfo,
-            ...data.me,
+            ...data.me, // Base data from DB
+            ...paymentInfo, // Overwrite with token payment info (if valid)
           };
           // 🔍 Log remaining attempts and plan type
           console.log(`📊 [ProfileScreen] Plan: ${updated.paymentPlan || 'Free'} | Remaining Attempts: ${updated.pendingLookups ?? 'N/A'}`);
@@ -738,13 +760,16 @@ const ProfileScreen = () => {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Privacy & Data</Text>
             <TouchableOpacity style={styles.linkButton} onPress={openPrivacyPolicy}>
-              <Text style={styles.linkButtonText}>Privacy Policy & Face Data Usage</Text>
+              <Text style={styles.linkButtonText}>Privacy Policy & Image Data Usage</Text>
             </TouchableOpacity>
             <Text style={styles.privacyNote}>
-              We use facial recognition to analyze photos and match them against our Public Safety database.
-              Face data is processed securely on our servers and is not permanently stored on your device.
+              We use image analysis to find visually similar images from publicly accessible websites.
+              Image data is processed securely on our servers and is not permanently stored on your device.
             </Text>
           </View>
+
+          {/* Report Misuse */}
+          <ReportMisuseCard />
 
           {/* Danger Zone - Professional Look */}
           <View style={styles.dangerZoneCard}>

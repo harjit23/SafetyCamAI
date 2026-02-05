@@ -126,14 +126,14 @@ export default function SubscriptionScreen() {
                                 await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
                                 await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
                                 console.log('✅ Token refreshed after purchase');
-
-                                // Update global user state
-                                await refreshUser();
                             }
                         }
                     } catch (refreshErr) {
                         console.warn('Failed to refresh token after purchase:', refreshErr);
                     }
+
+                    // Update global user state
+                    await refreshUser();
 
                     await RNIap.finishTransaction({ purchase, isConsumable: false });
                     Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription activated successfully!' });
@@ -258,6 +258,9 @@ export default function SubscriptionScreen() {
                     console.warn('Failed to refresh token after restore:', refreshErr);
                 }
 
+                // Update global user state
+                await refreshUser();
+
                 Toast.show({ type: 'success', text1: 'Restore Successful', text2: 'Your premium access has been restored.' });
                 setTimeout(() => navigation.navigate('Home'), 1500);
             } else {
@@ -272,12 +275,13 @@ export default function SubscriptionScreen() {
     };
 
     const handleManageAccount = async () => {
-        const ACCOUNT_URL = 'https://safetycamai.com';
+        // Open Apple's subscription management page (Apple-compliant)
+        const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
         try {
-            const canOpen = await Linking.canOpenURL(ACCOUNT_URL);
-            if (canOpen) await Linking.openURL(ACCOUNT_URL);
+            const canOpen = await Linking.canOpenURL(APPLE_SUBSCRIPTIONS_URL);
+            if (canOpen) await Linking.openURL(APPLE_SUBSCRIPTIONS_URL);
         } catch (error) {
-            Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open account page' });
+            Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open subscription settings' });
         }
     };
 
@@ -307,7 +311,7 @@ export default function SubscriptionScreen() {
                                 </View>
                                 <View style={styles.benefitItem}>
                                     <Icon name="check-circle" size={24} color="#0C66E4" />
-                                    <Text style={styles.benefitText}>Advanced Facial Recognition</Text>
+                                    <Text style={styles.benefitText}>Advanced Image Analysis</Text>
                                 </View>
                                 <View style={styles.benefitItem}>
                                     <Icon name="check-circle" size={24} color="#0C66E4" />
@@ -341,16 +345,9 @@ export default function SubscriptionScreen() {
                                     ) : (
                                         <View style={styles.buttonContent}>
                                             <Icon name="apple" size={22} color="#fff" />
-                                            <Text style={styles.applePayText}>Pay with Apple</Text>
+                                            <Text style={styles.applePayText}>Subscribe</Text>
                                         </View>
                                     )}
-                                </TouchableOpacity>
-
-                                <TouchableOpacity style={styles.manageAccountButton} onPress={handleManageAccount}>
-                                    <View style={styles.buttonContent}>
-                                        <Icon name="user" size={20} color="#fff" />
-                                        <Text style={styles.manageAccountText}>Manage Account</Text>
-                                    </View>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
@@ -368,7 +365,13 @@ export default function SubscriptionScreen() {
 
                             <Text style={styles.terms}>
                                 Subscription automatically renews unless cancelled 24 hours before the
-                                end of the current period. By subscribing, you agree to our Terms of Service.
+                                end of the current period. By subscribing, you agree to our{' '}
+                                <Text
+                                    style={{ textDecorationLine: 'underline', color: '#0C66E4' }}
+                                    onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
+                                >
+                                    Terms of Use (EULA)
+                                </Text>.
                             </Text>
                         </View>
                     </View>

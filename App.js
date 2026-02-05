@@ -6,6 +6,7 @@ import {
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Toast from 'react-native-toast-message';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ApolloProvider } from '@apollo/client';
 import { client } from './src/apollo/client';
@@ -17,12 +18,15 @@ import { LoaderProvider } from './src/context/LoaderContext';
 import HomeScreen from './src/screens/HomeScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import Loader from './src/components/Loader';
-import MugshotWebView from './src/screens/MugshotWebView';
+import SourceWebView from './src/screens/SourceWebView';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import SafetyDisclaimer from './src/components/SafetyDisclaimer';
 
 const Stack = createNativeStackNavigator();
+const ONBOARDING_KEY = 'onboarding_completed';
 
 const linking = {
   prefixes: ['https://app.safetycamai.com', 'safetycamai://'],
@@ -53,7 +57,21 @@ const linking = {
 export default function App() {
   const navigationRef = useRef();
   const [initialURLChecked, setInitialURLChecked] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(null);
 
+  // Check if onboarding has been completed
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const completed = await AsyncStorage.getItem(ONBOARDING_KEY);
+        setOnboardingComplete(completed === 'true');
+      } catch (e) {
+        console.warn('Failed to check onboarding status:', e);
+        setOnboardingComplete(true); // Default to skipping onboarding on error
+      }
+    };
+    checkOnboarding();
+  }, []);
 
   useEffect(() => {
     Linking.getInitialURL().then(url => {
@@ -82,8 +100,8 @@ export default function App() {
     return () => subscription.remove();
   }, []);
 
-  if (!initialURLChecked) {
-    return null; // optional: splash/loading screen
+  if (!initialURLChecked || onboardingComplete === null) {
+    return null; // Loading state
   }
 
   return (
@@ -91,25 +109,31 @@ export default function App() {
       <AuthProvider>
         <AlertProvider>
           <LoaderProvider>
-            <NavigationContainer ref={navigationRef} linking={linking}>
-              <Stack.Navigator screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="Home">
-                  {props => (
-                    <AlertProvider>
-                      <HomeScreen {...props} />
-                    </AlertProvider>
-                  )}
-                </Stack.Screen>
-                <Stack.Screen name="AuthLogin" component={AuthScreen} />
-                <Stack.Screen name="AuthRegister" component={AuthScreen} />
-                <Stack.Screen name="AuthReset" component={AuthScreen} />
-                <Stack.Screen name="AuthVerify" component={AuthScreen} />
-                <Stack.Screen name="MugshotWebView" component={MugshotWebView} />
-                <Stack.Screen name="History" component={HistoryScreen} />
-                <Stack.Screen name="Profile" component={ProfileScreen} />
-                <Stack.Screen name="Subscription" component={SubscriptionScreen} />
-              </Stack.Navigator>
-            </NavigationContainer>
+            <SafetyDisclaimer>
+              <NavigationContainer ref={navigationRef} linking={linking}>
+                <Stack.Navigator
+                  screenOptions={{ headerShown: false }}
+                  initialRouteName={onboardingComplete ? 'Home' : 'Onboarding'}
+                >
+                  <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+                  <Stack.Screen name="Home">
+                    {props => (
+                      <AlertProvider>
+                        <HomeScreen {...props} />
+                      </AlertProvider>
+                    )}
+                  </Stack.Screen>
+                  <Stack.Screen name="AuthLogin" component={AuthScreen} />
+                  <Stack.Screen name="AuthRegister" component={AuthScreen} />
+                  <Stack.Screen name="AuthReset" component={AuthScreen} />
+                  <Stack.Screen name="AuthVerify" component={AuthScreen} />
+                  <Stack.Screen name="SourceWebView" component={SourceWebView} />
+                  <Stack.Screen name="History" component={HistoryScreen} />
+                  <Stack.Screen name="Profile" component={ProfileScreen} />
+                  <Stack.Screen name="Subscription" component={SubscriptionScreen} />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </SafetyDisclaimer>
             <Loader />
             <Toast />
           </LoaderProvider>
@@ -118,9 +142,5 @@ export default function App() {
     </ApolloProvider>
   );
 }
-
-
-
-
 
 

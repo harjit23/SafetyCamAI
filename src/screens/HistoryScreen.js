@@ -238,7 +238,7 @@ export default function HistoryScreen() {
                         {!!r.url && (
                           <TouchableOpacity
                             onPress={() =>
-                              navigation.navigate('MugshotWebView', { url: r.url })
+                              navigation.navigate('SourceWebView', { url: r.url })
                             }
                             style={{ marginTop: 6 }}
                           >
