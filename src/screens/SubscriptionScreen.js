@@ -12,7 +12,7 @@ import {
     Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useMutation } from '@apollo/client';
 import Toast from 'react-native-toast-message';
 import * as RNIap from 'react-native-iap';
@@ -35,8 +35,41 @@ export default function SubscriptionScreen() {
     const { showLoader, hideLoader } = useLoader();
     const [processing, setProcessing] = useState(false);
     const [products, setProducts] = useState([]);
+    const [fetchError, setFetchError] = useState(null);
     const isUserInitiatedRef = React.useRef(false);
 
+    // ─── Fetch products every time screen comes into focus ───────────────────
+    useFocusEffect(
+        React.useCallback(() => {
+            let isActive = true;
+
+            const fetchProducts = async () => {
+                try {
+                    setFetchError(null);
+                    if (products.length === 0) showLoader('Loading options...');
+                    await RNIap.initConnection();
+                    const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
+                    if (isActive) {
+                        console.log('📦 Fetched products:', availableProducts.length);
+                        setProducts(availableProducts);
+                    }
+                } catch (err) {
+                    console.warn('IAP Fetch Error:', err);
+                    if (isActive) {
+                        setFetchError('Failed to load subscription options.');
+                    }
+                } finally {
+                    if (isActive) hideLoader();
+                }
+            };
+
+            fetchProducts();
+
+            return () => { isActive = false; };
+        }, [])
+    );
+
+    // ─── Setup purchase listeners ─────────────────────────────────────────────
     useEffect(() => {
         let purchaseUpdateSubscription = null;
         let purchaseErrorSubscription = null;
@@ -44,128 +77,80 @@ export default function SubscriptionScreen() {
 
         AsyncStorage.removeItem('redirectToSubscription').catch(() => { });
 
-        const initIAP = async () => {
-            try {
-                showLoader('Initializing...');
-                await RNIap.initConnection();
-                const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
-                if (isSubscribed) {
-                    setProducts(availableProducts);
+        const setupListeners = async () => {
+            try { await RNIap.initConnection(); } catch (e) { }
+
+            purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+                console.log('🔔 Purchase Update Listener Triggered:', purchase?.transactionId);
+                if (!purchase) return;
+
+                if (!isUserInitiatedRef.current) {
+                    console.log('⚠️ Ignoring purchase update: Not initiated by user action on this screen');
+                    try { await RNIap.finishTransaction({ purchase, isConsumable: false }); } catch (e) { }
+                    return;
                 }
-            } catch (err) {
-                console.warn('IAP Init Error:', err);
-                if (isSubscribed) {
-                    Toast.show({
-                        type: 'error',
-                        text1: 'Error',
-                        text2: 'Failed to load subscription options',
-                    });
+
+                let receipt = purchase.transactionReceipt;
+                if (!receipt && Platform.OS === 'ios') {
+                    try { receipt = await RNIap.getReceiptIOS(); } catch (err) { }
                 }
-            } finally {
-                hideLoader();
-            }
+
+                if (!receipt) {
+                    console.warn('❌ No receipt found in purchase update');
+                    if (isSubscribed) { setProcessing(false); hideLoader(); }
+                    return;
+                }
+
+                try {
+                    if (isSubscribed) { setProcessing(true); showLoader('Verifying purchase...'); }
+                    console.log('📤 Verifying receipt with backend...');
+                    const { data } = await verifyReceipt({ variables: { receipt } });
+
+                    if (data?.verifyApplePayment === true) {
+                        console.log('✅ Receipt verified successfully');
+                        try {
+                            const token = await AsyncStorage.getItem('accessToken');
+                            const refreshToken = await AsyncStorage.getItem('refreshToken');
+                            if (token && refreshToken) {
+                                const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
+                                if (refreshData?.refreshToken) {
+                                    await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
+                                    await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
+                                }
+                            }
+                        } catch (refreshErr) { console.warn('Token refresh failed:', refreshErr); }
+
+                        await refreshUser();
+                        await RNIap.finishTransaction({ purchase, isConsumable: false });
+                        Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription activated successfully!' });
+                        isUserInitiatedRef.current = false;
+                        setTimeout(() => navigation.navigate('Home'), 1500);
+                    } else {
+                        console.warn('❌ Receipt verification failed on backend');
+                        await RNIap.finishTransaction({ purchase, isConsumable: false });
+                        Toast.show({ type: 'error', text1: 'Verification Failed', text2: 'Receipt verification failed.' });
+                        isUserInitiatedRef.current = false;
+                    }
+                } catch (error) {
+                    console.error('❌ Error verifying receipt:', error);
+                    try { await RNIap.finishTransaction({ purchase, isConsumable: false }); } catch (e) { }
+                    Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to verify payment.' });
+                    isUserInitiatedRef.current = false;
+                } finally {
+                    if (isSubscribed) { setProcessing(false); hideLoader(); }
+                }
+            });
+
+            purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
+                if (error.responseCode !== '2' && error.responseCode !== 2) {
+                    Toast.show({ type: 'error', text1: 'Purchase Failed', text2: error.message || 'An error occurred' });
+                }
+                if (isSubscribed) { setProcessing(false); hideLoader(); }
+                isUserInitiatedRef.current = false;
+            });
         };
 
-        initIAP();
-
-        purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
-            console.log('🔔 Purchase Update Listener Triggered:', purchase?.transactionId);
-            if (!purchase) return;
-
-            // Only proceed if the user actually initiated a subscribe or restore action
-            if (!isUserInitiatedRef.current) {
-                console.log('⚠️ Ignoring purchase update: Not initiated by user action on this screen');
-                // We still need to finish the transaction if it's an old one to clear the queue
-                try {
-                    await RNIap.finishTransaction({ purchase, isConsumable: false });
-                    console.log('✅ Finished old transaction to clear queue');
-                } catch (e) {
-                    console.warn('Failed to finish old transaction:', e);
-                }
-                return;
-            }
-
-            let receipt = purchase.transactionReceipt;
-            if (!receipt && Platform.OS === 'ios') {
-                try {
-                    receipt = await RNIap.getReceiptIOS();
-                } catch (err) {
-                    console.warn('Failed to get receipt from iOS:', err);
-                }
-            }
-
-            if (!receipt) {
-                console.warn('❌ No receipt found in purchase update');
-                if (isSubscribed) {
-                    setProcessing(false);
-                    hideLoader();
-                }
-                return;
-            }
-
-            try {
-                if (isSubscribed) {
-                    setProcessing(true);
-                    showLoader('Verifying purchase...');
-                }
-                console.log('📤 Verifying receipt with backend...');
-                const { data } = await verifyReceipt({ variables: { receipt } });
-
-                if (data?.verifyApplePayment === true) {
-                    console.log('✅ Receipt verified successfully');
-
-                    // Refresh token to get updated claims
-                    // Refresh token to get updated claims
-                    try {
-                        const token = await AsyncStorage.getItem('accessToken');
-                        const refreshToken = await AsyncStorage.getItem('refreshToken');
-                        if (token && refreshToken) {
-                            console.log('🔄 Refreshing token after purchase...');
-                            const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
-                            if (refreshData?.refreshToken) {
-                                await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
-                                await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
-                                console.log('✅ Token refreshed after purchase');
-                            }
-                        }
-                    } catch (refreshErr) {
-                        console.warn('Failed to refresh token after purchase:', refreshErr);
-                    }
-
-                    // Update global user state
-                    await refreshUser();
-
-                    await RNIap.finishTransaction({ purchase, isConsumable: false });
-                    Toast.show({ type: 'success', text1: 'Success', text2: 'Subscription activated successfully!' });
-                    isUserInitiatedRef.current = false;
-                    setTimeout(() => navigation.navigate('Home'), 1500);
-                } else {
-                    console.warn('❌ Receipt verification failed on backend');
-                    await RNIap.finishTransaction({ purchase, isConsumable: false });
-                    Toast.show({ type: 'error', text1: 'Verification Failed', text2: 'Receipt verification failed.' });
-                    isUserInitiatedRef.current = false;
-                }
-            } catch (error) {
-                console.error('❌ Error verifying receipt:', error);
-                try {
-                    await RNIap.finishTransaction({ purchase, isConsumable: false });
-                } catch (e) { }
-                Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to verify payment.' });
-                isUserInitiatedRef.current = false;
-            } finally {
-                if (isSubscribed) {
-                    setProcessing(false);
-                    hideLoader();
-                }
-            }
-        });
-
-        purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
-            if (error.responseCode !== '2' && error.responseCode !== 2) {
-                Toast.show({ type: 'error', text1: 'Purchase Failed', text2: error.message || 'An error occurred' });
-            }
-            if (isSubscribed) setProcessing(false);
-        });
+        setupListeners();
 
         return () => {
             isSubscribed = false;
@@ -175,19 +160,45 @@ export default function SubscriptionScreen() {
         };
     }, [verifyReceipt, navigation]);
 
+    // ─── Handlers ────────────────────────────────────────────────────────────
+
+    const retryFetch = async () => {
+        showLoader('Retrying...');
+        setFetchError(null);
+        try {
+            await RNIap.initConnection();
+            const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
+            setProducts(availableProducts);
+            if (availableProducts.length === 0) setFetchError('No products found. Please try again later.');
+        } catch (err) {
+            setFetchError('Failed to load products. Check your connection.');
+        } finally {
+            hideLoader();
+        }
+    };
+
     const handleSubscribe = async () => {
         try {
             console.log('🚀 Initiating subscription purchase...');
             isUserInitiatedRef.current = true;
             setProcessing(true);
             showLoader('Connecting to Store...');
+
+            // Retry fetch inline if products are empty
             if (products.length === 0) {
-                Toast.show({ type: 'error', text1: 'Error', text2: 'No products available.' });
-                setProcessing(false);
-                hideLoader();
-                isUserInitiatedRef.current = false;
-                return;
+                try {
+                    const availableProducts = await RNIap.getSubscriptions({ skus: itemSkus });
+                    setProducts(availableProducts);
+                    if (availableProducts.length === 0) throw new Error('No products available');
+                } catch (e) {
+                    Toast.show({ type: 'error', text1: 'Error', text2: 'No products available. Please tap Retry.' });
+                    setProcessing(false);
+                    hideLoader();
+                    isUserInitiatedRef.current = false;
+                    return;
+                }
             }
+
             await RNIap.requestSubscription({ sku: itemSkus[0] });
         } catch (err) {
             console.error('❌ Subscription Request Error:', err);
@@ -228,11 +239,7 @@ export default function SubscriptionScreen() {
 
             let receipt = validPurchase.transactionReceipt;
             if (Platform.OS === 'ios' && !receipt) {
-                try {
-                    receipt = await RNIap.getReceiptIOS();
-                } catch (err) {
-                    console.warn('Failed to get receipt from iOS during restore:', err);
-                }
+                try { receipt = await RNIap.getReceiptIOS(); } catch (err) { }
             }
 
             if (!receipt) throw new Error('Could not retrieve purchase receipt');
@@ -240,27 +247,19 @@ export default function SubscriptionScreen() {
             const { data } = await verifyReceipt({ variables: { receipt } });
 
             if (data?.verifyApplePayment === true) {
-                // Refresh token to get updated claims
-                // Refresh token to get updated claims
                 try {
                     const token = await AsyncStorage.getItem('accessToken');
                     const refreshToken = await AsyncStorage.getItem('refreshToken');
                     if (token && refreshToken) {
-                        console.log('🔄 Refreshing token after restore...');
                         const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
                         if (refreshData?.refreshToken) {
                             await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
                             await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
-                            console.log('✅ Token refreshed after restore');
                         }
                     }
-                } catch (refreshErr) {
-                    console.warn('Failed to refresh token after restore:', refreshErr);
-                }
+                } catch (refreshErr) { }
 
-                // Update global user state
                 await refreshUser();
-
                 Toast.show({ type: 'success', text1: 'Restore Successful', text2: 'Your premium access has been restored.' });
                 setTimeout(() => navigation.navigate('Home'), 1500);
             } else {
@@ -274,19 +273,9 @@ export default function SubscriptionScreen() {
         }
     };
 
-    const handleManageAccount = async () => {
-        // Open Apple's subscription management page (Apple-compliant)
-        const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
-        try {
-            const canOpen = await Linking.canOpenURL(APPLE_SUBSCRIPTIONS_URL);
-            if (canOpen) await Linking.openURL(APPLE_SUBSCRIPTIONS_URL);
-        } catch (error) {
-            Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to open subscription settings' });
-        }
-    };
-
     const handleCancel = () => navigation.goBack();
 
+    // ─── Render ───────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
             <StatusBar barStyle="light-content" backgroundColor="#007bff" />
@@ -330,6 +319,16 @@ export default function SubscriptionScreen() {
                                     <Text style={styles.price}>$9.99</Text>
                                 )}
                                 <Text style={styles.pricePeriod}>per month</Text>
+
+                                {/* Retry button shown only on error */}
+                                {fetchError && (
+                                    <View style={styles.errorContainer}>
+                                        <Text style={styles.errorText}>{fetchError}</Text>
+                                        <TouchableOpacity style={styles.retryButton} onPress={retryFetch}>
+                                            <Text style={styles.retryText}>Retry</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </View>
 
                             <View style={styles.paymentOptionsContainer}>
@@ -363,14 +362,22 @@ export default function SubscriptionScreen() {
                                 </TouchableOpacity>
                             </View>
 
+                            {/* Legal text with EULA + Privacy Policy links */}
                             <Text style={styles.terms}>
                                 Subscription automatically renews unless cancelled 24 hours before the
                                 end of the current period. By subscribing, you agree to our{' '}
                                 <Text
-                                    style={{ textDecorationLine: 'underline', color: '#0C66E4' }}
+                                    style={styles.linkText}
                                     onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
                                 >
                                     Terms of Use (EULA)
+                                </Text>
+                                {' '}and{' '}
+                                <Text
+                                    style={styles.linkText}
+                                    onPress={() => Linking.openURL('https://safetycamai.com/privacy/')}
+                                >
+                                    Privacy Policy
                                 </Text>.
                             </Text>
                         </View>
@@ -412,14 +419,29 @@ const styles = StyleSheet.create({
     },
     price: { fontSize: 48, fontWeight: '700', color: '#0C66E4' },
     pricePeriod: { fontSize: 16, color: '#666', marginTop: 4 },
-    terms: { fontSize: 12, color: '#999', textAlign: 'center', lineHeight: 18, marginTop: 16 },
+    errorContainer: {
+        marginTop: 12,
+        padding: 10,
+        backgroundColor: '#ffebec',
+        borderRadius: 8,
+        alignItems: 'center',
+        width: '100%',
+    },
+    errorText: { color: '#d32f2f', textAlign: 'center', marginBottom: 8, fontSize: 12 },
+    retryButton: {
+        backgroundColor: '#d32f2f',
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    retryText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+    terms: { fontSize: 12, color: '#999', textAlign: 'center', lineHeight: 20, marginTop: 16 },
+    linkText: { textDecorationLine: 'underline', color: '#0C66E4' },
     paymentOptionsContainer: { marginTop: 8 },
     paymentOptionsTitle: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center', marginBottom: 16 },
     buttonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
     applePayButton: { backgroundColor: '#000', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
     applePayText: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 10 },
-    manageAccountButton: { backgroundColor: '#635BFF', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
-    manageAccountText: { color: '#fff', fontSize: 18, fontWeight: '700', marginLeft: 10 },
     cancelButton: {
         backgroundColor: 'transparent',
         paddingVertical: 14,
