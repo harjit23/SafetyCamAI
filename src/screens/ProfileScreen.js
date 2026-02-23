@@ -384,7 +384,26 @@ const ProfileScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       const refreshProfile = async () => {
-        // 1. Refresh from local token/storage (fast)
+        // 0. Refresh the JWT token from backend to get latest paymentPlan claims
+        try {
+          const token = await AsyncStorage.getItem('accessToken');
+          const storedRefreshToken = await AsyncStorage.getItem('refreshToken');
+          if (token && storedRefreshToken) {
+            console.log('🔄 [ProfileScreen] Refreshing token on focus...');
+            const { data: refreshData } = await refreshTokenMutation({
+              variables: { token, refreshToken: storedRefreshToken },
+            });
+            if (refreshData?.refreshToken) {
+              await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
+              await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
+              console.log('✅ [ProfileScreen] Token refreshed on focus');
+            }
+          }
+        } catch (e) {
+          console.log('Token refresh on focus failed (non-fatal):', e);
+        }
+
+        // 1. Refresh from local token/storage (now has fresh token)
         await refreshUser();
         // 2. Refresh from network (slower, might fail)
         try {
@@ -394,13 +413,30 @@ const ProfileScreen = () => {
         }
       };
       refreshProfile();
-    }, [refetch, refreshUser])
+    }, [refetch, refreshUser, refreshTokenMutation])
   );
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     try {
-      // 1. Refresh from local token first
+      // 0. Refresh token from backend first
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        const storedRefreshToken = await AsyncStorage.getItem('refreshToken');
+        if (token && storedRefreshToken) {
+          const { data: refreshData } = await refreshTokenMutation({
+            variables: { token, refreshToken: storedRefreshToken },
+          });
+          if (refreshData?.refreshToken) {
+            await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
+            await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
+          }
+        }
+      } catch (e) {
+        console.log('Token refresh on pull-to-refresh failed (non-fatal):', e);
+      }
+
+      // 1. Refresh from local token first (now has fresh token)
       await refreshUser();
 
       // 2. Refresh from network
