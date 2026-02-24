@@ -11,8 +11,10 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useMutation, useQuery } from '@apollo/client';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { useMutation, useQuery, gql } from '@apollo/client';
+import axios from 'axios';
+import { API_BASE_URL } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -28,6 +30,7 @@ import { ReportMisuseCard } from '../components/ReportMisuse';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
   const { user, logout, refreshUser } = useAuth();
   const [deleteUser] = useMutation(DELETE_USER);
   const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
@@ -78,6 +81,55 @@ const ProfileScreen = () => {
       checkAuthAndRefresh();
     }, [user, navigation])
   );
+
+  // Handle Return from Social Linking
+  useEffect(() => {
+    const { code, provider } = route.params || {};
+    if (code && provider) {
+      const exchangeLinkingCode = async () => {
+        try {
+          const { showLoader, hideLoader } = client.cache.readQuery({ query: gql`query { loader @client { show hide } }` }) || {};
+          // Since we don't have easy access to loader context here without wrapping or passing, 
+          // let's just use a simple toast for now or reliance on the fact that linking is a background-ish final step.
+
+          Toast.show({ type: 'info', text1: 'Linking Account...', text2: `Completing ${provider} link` });
+
+          const response = await axios.post(
+            `${API_BASE_URL}/auth/${provider}/exchange`,
+            JSON.stringify(code),
+            {
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+
+          console.log('[ProfileScreen] Linking exchange response:', response.data);
+
+          if (response.data?.token) {
+            Toast.show({ type: 'success', text1: 'Success', text2: 'Account linked successfully!' });
+            // Refresh user data to show the new link
+            await refreshUser();
+            // Refetch data to update the Linked Accounts list
+            await refetch();
+          } else if (response.data?.error) {
+            Toast.show({ type: 'error', text1: 'Linking Failed', text2: response.data.error });
+          } else {
+            Toast.show({ type: 'error', text1: 'Linking Failed', text2: 'Invalid response from server' });
+          }
+        } catch (error) {
+          console.error('[ProfileScreen] Social linking exchange error:', error);
+          const msg = error.response?.data?.error || error.message || 'Failed to complete linking';
+          Toast.show({ type: 'error', text1: 'Linking Failed', text2: msg });
+        } finally {
+          // Clear params so it doesn't re-run
+          navigation.setParams({ code: undefined, provider: undefined });
+        }
+      };
+
+      exchangeLinkingCode();
+    }
+  }, [route.params, navigation, refreshUser]);
 
 
 

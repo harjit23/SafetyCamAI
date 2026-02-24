@@ -119,16 +119,20 @@ export default function AuthScreen() {
               });
             }
           } else {
-            console.error('[AuthScreen] Invalid token response:', response.data);
+            console.error('[AuthScreen] Invalid response structure:', response.data);
             throw new Error('Invalid token response');
           }
         } catch (error) {
           console.error('Error exchanging social code:', error);
-          if (error.response) {
-             console.error('Error response data:', error.response.data);
-             console.error('Error response status:', error.response.status);
+          
+          let errorMsg = 'Login failed. Please try again.';
+          if (error.response?.data?.error) {
+            errorMsg = error.response.data.error;
+          } else if (error.message) {
+            errorMsg = error.message;
           }
-          showAlert('Login failed. Please try again.');
+          
+          showAlert(errorMsg);
         } finally {
           hideLoader();
         }
