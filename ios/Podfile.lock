@@ -2222,7 +2222,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - RNIap (12.15.1):
+  - RNIap (12.16.4):
     - React-Core
   - RNImageCropPicker (0.51.0):
     - boost
@@ -2707,7 +2707,7 @@ SPEC CHECKSUMS:
   ReactCommon: 17fd88849a174bf9ce45461912291aca711410fc
   RNCAsyncStorage: b44e8a4e798c3e1f56bffccd0f591f674fb9198f
   RNGestureHandler: 4e0ee6a1f04f5ac8d70c87d3c761d40a50964172
-  RNIap: aa38c2cc8a2a75ba8112d161ca084a0b611955df
+  RNIap: 65051c94a29a17bd8356bcf16a878821862eecd0
   RNImageCropPicker: 5f9094e3b0cf5f718276b29e22dc7598fcebe639
   RNInAppBrowser: 6d3eb68d471b9834335c664704719b8be1bfdb20
   RNScreens: 6f26eb84a9475b21246f1a515923837771ff9be3
