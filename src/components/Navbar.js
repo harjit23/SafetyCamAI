@@ -10,19 +10,21 @@ import {
   SafeAreaView,
   Image,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import Toast from 'react-native-toast-message';
+import Icon from 'react-native-vector-icons/FontAwesome';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Navbar = () => {
   const navigation = useNavigation();
   const { user, logout } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
 
-
+  const route = useRoute();
 
   // history component routing 
-  const onHistoryPress =()=>{
+  const onHistoryPress = () => {
     navigation.navigate("RecentHistory")
 
   }
@@ -31,9 +33,25 @@ const Navbar = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.logo}>
-          <Text style={{ fontWeight: 'bold' }}>Safety Cam AI</Text>
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {route.name !== 'Home' && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 10, padding: 5 }}>
+              <Icon name="arrow-left" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={() => {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              });
+            }}
+          >
+            <Text style={styles.logo}>
+              <Text style={{ fontWeight: 'bold' }}>Safety Cam AI</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.rightButtons}>
           {user && (
@@ -43,7 +61,7 @@ const Navbar = () => {
                 style={styles.historyImage}
               />
             </TouchableOpacity>
-            
+
           )}
 
           <TouchableOpacity
@@ -64,16 +82,18 @@ const Navbar = () => {
             {!user ? (
               <>
                 <TouchableOpacity
-                  onPress={() => {
+                  onPress={async () => {
                     setMenuVisible(false);
+                    await AsyncStorage.removeItem('redirectToSubscription');
                     navigation.navigate('AuthLogin');
                   }}
                 >
                   <Text style={styles.dropdownItem}>Login</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => {
+                  onPress={async () => {
                     setMenuVisible(false);
+                    await AsyncStorage.removeItem('redirectToSubscription');
                     navigation.navigate('AuthRegister');
                   }}
                 >
@@ -81,23 +101,33 @@ const Navbar = () => {
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity
-                onPress={async () => {
-                  await logout();
-                  setMenuVisible(false);
-                  Toast.show({
-                    type: 'info',
-                    text1: 'Logged out',
-                    text2: 'You have been logged out successfully.',
-                  });
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Home' }],
-                  });
-                }}
-              >
-                <Text style={styles.dropdownItem}>Logout</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    setMenuVisible(false);
+                    navigation.navigate('Profile');
+                  }}
+                >
+                  <Text style={styles.dropdownItem}>My Profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await logout();
+                    setMenuVisible(false);
+                    Toast.show({
+                      type: 'info',
+                      text1: 'Logged out',
+                      text2: 'You have been logged out successfully.',
+                    });
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Home' }],
+                    });
+                  }}
+                >
+                  <Text style={styles.dropdownItem}>Logout</Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </TouchableOpacity>

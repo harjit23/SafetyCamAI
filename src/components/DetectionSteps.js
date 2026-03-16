@@ -8,17 +8,49 @@ import {
   StyleSheet,
   ScrollView,
   Easing,
+  TouchableOpacity,
+  PermissionsAndroid,
+  Platform,
+  Alert,
 } from "react-native";
+import ImagePicker from 'react-native-image-crop-picker';
 
 const steps = [
   "Subscription Initialization",
   "Validating Api Key..",
-  "Loading Criminal database..",
-  "Detecting Face..",
-  "Detection Completed."
+  "Loading image database..",
+  "Analyzing image..",
+  "Analysis Completed."
 ];
 
-const DetectionSteps = ({ image, currentStatus }) => {
+const requestCameraPerms = async () => {
+  if (Platform.OS !== 'android') return true;
+
+  const wants = [PermissionsAndroid.PERMISSIONS.CAMERA];
+
+  if (Platform.Version >= 33) {
+    wants.push(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES);
+  } else {
+    wants.push(
+      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+    );
+  }
+
+  const result = await PermissionsAndroid.requestMultiple(wants);
+  return Object.values(result).every(v => v === PermissionsAndroid.RESULTS.GRANTED);
+};
+
+const toPickedAsset = (img) => ({
+  uri: img.path?.startsWith('file://') ? img.path : `file://${img.path}`,
+  fileName: img.filename || (img.path?.split('/').pop() ?? 'photo.jpg'),
+  type: img.mime || 'image/jpeg',
+  width: img.width,
+  height: img.height,
+  size: img.size,
+});
+
+const DetectionSteps = ({ image, currentStatus, onChangeImage }) => {
   const [completedSteps, setCompletedSteps] = useState([]);
   const spinAnim = useRef(new Animated.Value(0)).current;
 
@@ -86,9 +118,47 @@ const DetectionSteps = ({ image, currentStatus }) => {
     outputRange: ["0deg", "360deg"],
   });
 
+  // Handle opening camera
+  const handleOpenCamera = async () => {
+    const ok = await requestCameraPerms();
+    if (!ok) {
+      Alert.alert('Permission needed', 'Please allow camera/photos access to take a picture.');
+      return;
+    }
+
+    try {
+      const img = await ImagePicker.openCamera({
+        mediaType: 'photo',
+        cropping: true,
+        freeStyleCropEnabled: true,
+        compressImageQuality: 0.9,
+      });
+      const picked = toPickedAsset(img);
+      onChangeImage?.(picked);
+    } catch (e) {
+      console.log('openCamera error:', e?.message || e);
+    }
+  };
+
+  // Handle selecting image from gallery
+  const handleSelectImage = async () => {
+    try {
+      const img = await ImagePicker.openPicker({
+        mediaType: 'photo',
+        cropping: true,
+        freeStyleCropEnabled: true,
+        compressImageQuality: 0.9,
+      });
+      const picked = toPickedAsset(img);
+      onChangeImage?.(picked);
+    } catch (e) {
+      console.log('openPicker error:', e?.message || e);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Criminal Image</Text>
+      <Text style={styles.title}>Public Image</Text>
 
       <View style={styles.imageWrapper}>
         {validImage ? (
@@ -107,7 +177,19 @@ const DetectionSteps = ({ image, currentStatus }) => {
         />
       </View>
 
-      {/* <Text style={styles.changeText}>Click here to change image</Text> */}
+      {/* Change Image / Open Camera Links */}
+      {onChangeImage && (
+        <View style={styles.changeImageContainer}>
+          <Text style={styles.changeTextPrefix}>Click here to </Text>
+          <TouchableOpacity onPress={handleSelectImage}>
+            <Text style={styles.changeTextLink}>Change image</Text>
+          </TouchableOpacity>
+          <Text style={styles.changeTextPrefix}> or </Text>
+          <TouchableOpacity onPress={handleOpenCamera}>
+            <Text style={styles.changeTextLink}>Open Camera</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView style={styles.stepList}>
         {steps.map((step, idx) => {
@@ -196,6 +278,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#555",
     marginVertical: 10,
+  },
+  changeImageContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 10,
+  },
+  changeTextPrefix: {
+    fontSize: 12,
+    color: "#555",
+  },
+  changeTextLink: {
+    fontSize: 12,
+    color: "#007bff",
+    fontWeight: "bold",
   },
   stepList: {
     width: "100%",

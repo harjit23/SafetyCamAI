@@ -15,11 +15,13 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
-import jwtDecode from 'jwt-decode';
-import { gql } from '@apollo/client';
+import { jwtDecode } from 'jwt-decode';
+import { gql, useMutation } from '@apollo/client';
 import { client } from '../apollo/client';
 
-import { GET_PENDING_LOOKUPS, GET_USER_API_KEY } from '../graphql/mutations';
+import * as RNIap from 'react-native-iap';
+import { GET_PENDING_LOOKUPS, GET_USER_API_KEY, VERIFY_RECEIPT_MUTATION } from '../graphql/mutations';
+import { API_BASE_URL } from '../config';
 
 import Navbar from '../components/Navbar';
 import UploadBox from '../components/UploadBox';
@@ -41,6 +43,49 @@ const STATUS_SUBSCRIPTION = gql`
 // ------------------ Helpers ------------------
 const normalizeFsPath = (uri) => uri || uri; // keep as-is for RN fetch FormData
 
+// Robust date parsing helper
+const parseDate = (dateStr) => {
+  if (!dateStr) return new Date(NaN);
+  
+  // Try standard parsing first
+  let date = new Date(dateStr);
+  if (!isNaN(date.getTime())) return date;
+
+  try {
+    // Handle "MM/DD/YYYY HH:MM:SS AM/PM [Offset]"
+    // Example: "12/27/2025 5:50:04 AM +00:00"
+    const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})\s+(AM|PM)\s+([+-]\d{2}:\d{2}|Z)?/i);
+    
+    if (match) {
+      let [_, m, d, y, h, min, s, ampm, offset] = match;
+      m = parseInt(m, 10);
+      d = parseInt(d, 10);
+      y = parseInt(y, 10);
+      h = parseInt(h, 10);
+      min = parseInt(min, 10);
+      s = parseInt(s, 10);
+      
+      if (ampm.toUpperCase() === 'PM' && h < 12) h += 12;
+      if (ampm.toUpperCase() === 'AM' && h === 12) h = 0;
+
+      // Construct ISO string: YYYY-MM-DDTHH:MM:SS
+      const isoBase = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      
+      if (offset) {
+        if (offset.toUpperCase() === 'Z') offset = '+00:00';
+        date = new Date(isoBase + offset);
+      } else {
+        // Fallback to local time
+        date = new Date(y, m - 1, d, h, min, s);
+      }
+      return date;
+    }
+  } catch (e) {
+    console.warn('parseDate regex failed:', e);
+  }
+  return new Date(NaN);
+};
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -55,6 +100,7 @@ export default function HomeScreen() {
   // attempts UI state
   const [remainingAttempts, setRemainingAttempts] = useState(null);
   const [attemptsResetAt, setAttemptsResetAt] = useState(null);
+  const [paymentPlan, setPaymentPlan] = useState(null);
 
   const subObserverRef = useRef(null);
   const subIdRef = useRef(null);
@@ -95,6 +141,7 @@ export default function HomeScreen() {
           resetToUpload();
           return true;
         }
+        // If on Home screen (upload state), exit app instead of going back
         BackHandler.exitApp();
         return true;
       };
@@ -149,11 +196,35 @@ export default function HomeScreen() {
     (errorsArray) => {
       if (__DEV__) console.log('[GQL errors]', JSON.stringify(errorsArray, null, 2));
       const message = errorsArray?.[0]?.message || 'Upload failed';
-      if (
+      
+      const isLimitError = 
         message.toLowerCase().includes('weekly free trial') ||
-        message.toLowerCase().includes('weekly api hit limit exceeded')
-      ) {
-        showAlert(message);
+        message.toLowerCase().includes('weekly api hit limit exceeded') ||
+        message.toLowerCase().includes('free trial limit exceeded') ||
+        message.toLowerCase().includes('free trial expired') ||
+        message.toLowerCase().includes('api key is expired');
+
+      if (isLimitError) {
+        const isGuest = !user;
+        
+        const isApiKeyExpired = message.toLowerCase().includes('api key is expired');
+
+        Toast.show({
+          type: 'error',
+          text1: isApiKeyExpired ? 'Plan Expired' : 'Limit Reached',
+          text2: isGuest ? 'Please log in to subscribe.' : 'Redirecting to plans...',
+          visibilityTime: 3000,
+        });
+        
+        // Redirect after a delay
+        setTimeout(async () => {
+          if (isGuest) {
+            await AsyncStorage.setItem('redirectToSubscription', 'true');
+            navigation.navigate('AuthLogin');
+          } else {
+            navigation.navigate('Subscription');
+          }
+        }, 2500);
       } else {
         Toast.show({ type: 'error', text1: 'Error', text2: message });
       }
@@ -161,7 +232,7 @@ export default function HomeScreen() {
       resetToUpload();
       fetchPending();
     },
-    [resetToUpload, unsubscribeStatus, showAlert],
+    [resetToUpload, unsubscribeStatus, navigation, fetchPending, user],
   );
 
   const getUserId = useCallback(async () => {
@@ -184,19 +255,25 @@ export default function HomeScreen() {
 
   // fetch remaining attempts
   const fetchPending = useCallback(async () => {
-    const token = await AsyncStorage.getItem('accessToken');
-    const userId = await getUserId();
-    if (!token || !userId) {
-      setRemainingAttempts(null);
-      setAttemptsResetAt(null);
-      return;
+    let token = null;
+    let userId = null;
+
+    // Only fetch token/userId if user is actually logged in
+    if (user) {
+      token = await AsyncStorage.getItem('accessToken');
+      userId = await getUserId();
     }
+    
+    // Always fetch from backend (Logged in: by userId, Guest: by IP)
     try {
       const { data } = await client.query({
         query: GET_PENDING_LOOKUPS,
-        variables: { userId },
+        variables: { userId: userId || null },
         fetchPolicy: 'no-cache',
-        context: { headers: { authorization: `Bearer ${token}` } },
+        context: { 
+          headers: token ? { authorization: `Bearer ${token}` } : {},
+          skipAuth: !user, // Skip auth if user is not logged in (Guest mode)
+        },
       });
 
       if (__DEV__) {
@@ -204,17 +281,66 @@ export default function HomeScreen() {
       }
 
       const pending = data?.pendingLookups;
-      setRemainingAttempts(pending?.pendingLookups ?? null);
+      const attempts = pending?.pendingLookups ?? null;
+      console.log('✅ [HomeScreen] Fetched attempts:', attempts);
+      setRemainingAttempts(attempts);
       setAttemptsResetAt(pending?.lastDate ?? null);
+
+      // Extract plan from token if available
+      if (token) {
+        try {
+          const decoded = jwtDecode(token);
+          setPaymentPlan(decoded.paymentPlan || null);
+        } catch (e) {
+          console.warn('Failed to decode token for plan:', e);
+        }
+      } else {
+        setPaymentPlan(null);
+      }
+
+      // 🔍 Log remaining attempts and plan type (Safe logging)
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (token) {
+          const decoded = jwtDecode(token);
+          const expiry = parseDate(decoded.paymentExpiryDate);
+          const now = new Date();
+          const isExpired = isNaN(expiry.getTime()) || now > expiry;
+          
+          console.log('--- 📊 Plan Status Calculation [HomeScreen] ---');
+          console.log('Plan:', decoded.paymentPlan);
+          console.log('Raw Expiry Date:', decoded.paymentExpiryDate);
+          console.log('Parsed Expiry Date:', isNaN(expiry.getTime()) ? 'Invalid Date' : expiry.toLocaleString());
+          console.log('Current Date:', now.toLocaleString());
+          console.log('Is Expired:', isExpired);
+          console.log('Remaining Attempts (from backend):', attempts);
+          console.log('-----------------------------------------------');
+        } else {
+          console.log(`📊 [HomeScreen] Plan: Guest | Remaining Attempts: ${attempts}`);
+        }
+      } catch (logError) {
+        console.log('📊 [HomeScreen] Remaining Attempts:', attempts);
+      }
     } catch (e) {
-      console.log('[GET_PENDING_LOOKUPS error]', e?.message || e);
+      console.error('❌ [HomeScreen] fetchPending Error:', e);
       setRemainingAttempts(null);
       setAttemptsResetAt(null);
     }
-  }, [getUserId]);
+  }, [getUserId, user]);
 
   useFocusEffect(useCallback(() => { fetchPending(); }, [fetchPending]));
   useEffect(() => { if (state === 'upload') fetchPending(); }, [state, fetchPending]);
+
+  // Clear redirection flag when Home screen is focused
+  // This prevents unwanted redirects if the user backed out of the auth flow
+  useFocusEffect(
+    useCallback(() => {
+      const clearRedirectFlag = async () => {
+        await AsyncStorage.removeItem('redirectToSubscription');
+      };
+      clearRedirectFlag();
+    }, [])
+  );
 
   // ---- Foreground GraphQL multipart upload (ordered & with preflight header) ----
   const uploadViaFetchGraphql = useCallback(async ({ file, subscriptionId, apiKeyToSend }) => {
@@ -243,7 +369,7 @@ export default function HomeScreen() {
       type: file.type || 'image/jpeg',
     });
 
-    const res = await fetch('https://api.safetycamai.com/graphql/', {
+    const res = await fetch(`${API_BASE_URL}/graphql/`, {
       method: 'POST',
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -286,6 +412,12 @@ export default function HomeScreen() {
 
         flagsRef.current.haveResults = true;
 
+        // Mark guest trial as used
+        const userId = await getUserId();
+        if (!userId) {
+          await AsyncStorage.setItem('guestUsedTrial', 'true');
+        }
+
         if (flagsRef.current.subDone) {
           setState('results');
           unsubscribeStatus();
@@ -299,11 +431,33 @@ export default function HomeScreen() {
           (status === 401 || status === 403
             ? 'Please sign in to continue.'
             : 'Upload failed.');
-        if (
+            
+        const isLimitError = 
           msg.toLowerCase().includes('weekly free trial') ||
-          msg.toLowerCase().includes('weekly api hit limit exceeded')
-        ) {
-          handleGraphQLErrors([{ message: msg }]);
+          msg.toLowerCase().includes('weekly api hit limit exceeded') ||
+          msg.toLowerCase().includes('free trial limit exceeded') ||
+          msg.toLowerCase().includes('free trial expired') ||
+          msg.toLowerCase().includes('api key is expired');
+
+        if (isLimitError) {
+          if (!user) {
+             await AsyncStorage.setItem('guestUsedTrial', 'true');
+             setRemainingAttempts(0);
+          }
+          
+          const isApiKeyExpired = msg.toLowerCase().includes('api key is expired');
+          
+          if (isApiKeyExpired) {
+             Toast.show({
+              type: 'error',
+              text1: 'Plan Expired',
+              text2: 'Redirecting to plans...',
+              visibilityTime: 3000,
+            });
+            setTimeout(() => navigation.navigate('Subscription'), 2500);
+          } else {
+             handleGraphQLErrors([{ message: msg }]);
+          }
         } else {
           Toast.show({ type: 'error', text1: `Server ${status}`, text2: msg });
           unsubscribeStatus();
@@ -312,7 +466,7 @@ export default function HomeScreen() {
         }
       }
     },
-    [unsubscribeStatus, resetToUpload, handleGraphQLErrors, fetchPending, uploadViaFetchGraphql]
+    [unsubscribeStatus, resetToUpload, handleGraphQLErrors, fetchPending, uploadViaFetchGraphql, user]
   );
 
   const ensureApiKey = useCallback(async () => {
@@ -363,8 +517,8 @@ export default function HomeScreen() {
 
       setImage(selectedImage);
       setResults([]);
-      resetFlags();
       setTrackingMessage('Preparing upload…');
+      resetFlags();
       setState('verifying');
 
       const subId = generateSubscriptionId();
@@ -391,10 +545,23 @@ export default function HomeScreen() {
     ],
   );
 
-  const openStripeCheckout = () => {
-    const url =
-      'https://buy.stripe.com/14k5mlbRx1VGfBe003?locale=en&__embed_source=buy_btn_1RNajwKLsA7J6NNllOqM5WFB';
-    navigation.navigate('MugshotWebView', { url, title: 'Upgrade' });
+  // Note: IAP logic is handled in SubscriptionScreen only to avoid duplicate listeners
+  // which cause receipt verification errors when the app loads
+
+  const openStripeCheckout = async () => {
+    // Check if user is logged in
+    const token = await AsyncStorage.getItem('accessToken');
+    
+    if (!user || !token) {
+      // User is not logged in, set flag and navigate to login screen
+      console.log('User not logged in, navigating to AuthLogin...');
+      await AsyncStorage.setItem('redirectToSubscription', 'true');
+      navigation.navigate('AuthLogin');
+    } else {
+      // User is logged in, navigate to subscription screen
+      console.log('User logged in, navigating to Subscription...');
+      navigation.navigate('Subscription');
+    }
   };
 
   return (
@@ -405,19 +572,23 @@ export default function HomeScreen() {
       <LinearGradient colors={['#007bff', '#69bfff']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <StatusBar barStyle="light-content" backgroundColor="#007bff" />
-          <Text style={styles.heading}>Find Criminals. Stay Aware. Stay Safe.</Text>
+          <Text style={styles.heading}>Explore Publicly Available Look-Alike Images.</Text>
           <Text style={styles.subHeading}>
-            Easily search billions of records — from most-wanted fugitives to petty thieves.
+            Upload a photo to discover visually similar images found on publicly accessible websites
           </Text>
 
           {(!image || state === 'upload') && <UploadBox onUpload={handleImageSelect} />}
 
-          {remainingAttempts !== null && (
+          {remainingAttempts !== null && !paymentPlan?.toLowerCase().includes('enterprise') && (
             <Text style={styles.attemptsText}>Remaining Attempts: {remainingAttempts}</Text>
           )}
 
           {state === 'verifying' && (
-            <DetectionSteps image={image} currentStatus={trackingMessage || 'Uploading image…'} />
+            <DetectionSteps 
+              image={image} 
+              currentStatus={trackingMessage || 'Uploading image…'} 
+              onChangeImage={handleImageSelect}
+            />
           )}
 
           {state === 'results' && (

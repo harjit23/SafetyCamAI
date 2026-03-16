@@ -4,24 +4,21 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Linking,
   StyleSheet,
   TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import { useAlert } from '../context/AlertContext';
 import { useNavigation } from '@react-navigation/native';
 
 const AlertDialog = () => {
-  const navigation = useNavigation()
+  const navigation = useNavigation();
   const { alertInfo, closeAlert } = useAlert();
 
   const upgradeNow = () => {
-    // Linking.openURL('https://buy.stripe.com/14k5mlbRx1VGfBe003?locale=en&__embed_source=buy_btn_1RNajwKLsA7J6NNllOqM5WFB');
-    const url =
-      'https://buy.stripe.com/14k5mlbRx1VGfBe003?locale=en&__embed_source=buy_btn_1RNajwKLsA7J6NNllOqM5WFB';
-    navigation.navigate('MugshotWebView', { url, title: 'Upgrade' });
+    // Close the alert and navigate to Subscription screen
+    // All IAP handling is centralized in SubscriptionScreen
     closeAlert();
+    navigation.navigate('Subscription');
   };
 
   return (
@@ -32,22 +29,25 @@ const AlertDialog = () => {
             <View style={styles.card}>
               <Text style={styles.title}>Trial Feature Expired</Text>
               <Text style={styles.message}>
-                {alertInfo.msg}. Upgrade your account to continue enjoying advanced features and uninterrupted service.
+                {alertInfo.msg}. Upgrade to Premium for just $9.19/month to continue.
               </Text>
 
               <View style={styles.benefits}>
-                <Text style={styles.benefitsHeader}>What you'll get with premium:</Text>
-                <Text style={styles.benefitItem}>• Priority customer support</Text>
-                <Text style={styles.benefitItem}>• Advanced analytics and reporting</Text>
+                <Text style={styles.benefitsHeader}>Premium Benefits:</Text>
+                <Text style={styles.benefitItem}>• Unlimited Searches</Text>
+                <Text style={styles.benefitItem}>• Advanced Facial Recognition</Text>
+                <Text style={styles.benefitItem}>• Priority Support</Text>
               </View>
 
               <View style={styles.actions}>
-                <TouchableOpacity style={styles.upgradeButton} onPress={upgradeNow}>
-                  <Text style={styles.upgradeText}>Manage Account</Text>
+                <TouchableOpacity
+                  style={styles.upgradeButton}
+                  onPress={upgradeNow}
+                >
+                  <Text style={styles.upgradeText}>
+                    Subscribe ($9.19/mo)
+                  </Text>
                 </TouchableOpacity>
-                {/* <TouchableOpacity style={styles.learnMoreButton} onPress={closeAlert}>
-                  <Text style={styles.learnMoreText}>Learn More</Text>
-                </TouchableOpacity> */}
               </View>
             </View>
           </TouchableWithoutFeedback>
