@@ -155,12 +155,16 @@ export const AuthProvider = ({ children }) => {
             } catch (e) { }
           }
 
-          // Token claims take precedence for plan/expiry
+          // Token claims take precedence for user info and payment
           const updatedUser = {
             ...finalUser,
+            id: decoded.id || decoded.userId || decoded.sub || finalUser.id,
+            name: decoded.name || decoded.unique_name || decoded.given_name || finalUser.name,
+            email: decoded.email || decoded.upn || finalUser.email,
+            linked_accounts: decoded.linked_accounts || finalUser.linked_accounts,
             paymentPlan: decoded.paymentPlan,
             paymentExpiryDate: decoded.paymentExpiryDate,
-            pendingLookups: decoded.pendingLookups // if available in token
+            pendingLookups: decoded.pendingLookups !== undefined ? decoded.pendingLookups : finalUser.pendingLookups
           };
 
           console.log('[AuthContext] 🔄 Refreshing user state. Plan:', updatedUser.paymentPlan);

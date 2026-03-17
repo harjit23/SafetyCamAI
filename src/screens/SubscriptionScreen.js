@@ -178,6 +178,10 @@ export default function SubscriptionScreen() {
     };
 
     const handleSubscribe = async () => {
+        if (Platform.OS === 'android') {
+            navigation.navigate('StripePayment');
+            return;
+        }
         try {
             console.log('🚀 Initiating subscription purchase...');
             isUserInitiatedRef.current = true;
@@ -334,32 +338,48 @@ export default function SubscriptionScreen() {
                             <View style={styles.paymentOptionsContainer}>
                                 <Text style={styles.paymentOptionsTitle}>Choose Payment Method</Text>
 
-                                <TouchableOpacity
-                                    style={[styles.applePayButton, processing && { opacity: 0.7 }]}
-                                    onPress={handleSubscribe}
-                                    disabled={processing}
-                                >
-                                    {processing ? (
-                                        <ActivityIndicator color="#fff" />
-                                    ) : (
+                                {Platform.OS === 'ios' && (
+                                    <TouchableOpacity
+                                        style={[styles.applePayButton, processing && { opacity: 0.7 }]}
+                                        onPress={handleSubscribe}
+                                        disabled={processing}
+                                    >
+                                        {processing ? (
+                                            <ActivityIndicator color="#fff" />
+                                        ) : (
+                                            <View style={styles.buttonContent}>
+                                                <Icon name="apple" size={22} color="#fff" />
+                                                <Text style={styles.applePayText}>Subscribe</Text>
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
+
+                                {Platform.OS === 'android' && (
+                                    <TouchableOpacity
+                                        style={[styles.applePayButton, { backgroundColor: '#007bff' }]}
+                                        onPress={handleSubscribe}
+                                    >
                                         <View style={styles.buttonContent}>
-                                            <Icon name="apple" size={22} color="#fff" />
-                                            <Text style={styles.applePayText}>Subscribe</Text>
+                                            <Icon name="credit-card" size={22} color="#fff" />
+                                            <Text style={styles.applePayText}>Pay with Stripe</Text>
                                         </View>
-                                    )}
-                                </TouchableOpacity>
+                                    </TouchableOpacity>
+                                )}
 
                                 <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
                                     <Text style={styles.cancelText}>Cancel</Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity
-                                    style={styles.restoreButton}
-                                    onPress={handleRestorePurchase}
-                                    disabled={processing}
-                                >
-                                    <Text style={styles.restoreText}>Already a member? Restore Purchase</Text>
-                                </TouchableOpacity>
+                                {Platform.OS === 'ios' && (
+                                    <TouchableOpacity
+                                        style={styles.restoreButton}
+                                        onPress={handleRestorePurchase}
+                                        disabled={processing}
+                                    >
+                                        <Text style={styles.restoreText}>Already a member? Restore Purchase</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
 
                             {/* Legal text with EULA + Privacy Policy links */}

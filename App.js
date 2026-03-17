@@ -7,6 +7,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clarity from '@microsoft/react-native-clarity';
 
 import { ApolloProvider } from '@apollo/client';
 import { client } from './src/apollo/client';
@@ -23,6 +24,7 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import StripePaymentScreen from './src/screens/StripePaymentScreen';
 import SafetyDisclaimer from './src/components/SafetyDisclaimer';
 
 const Stack = createNativeStackNavigator();
@@ -33,7 +35,14 @@ const linking = {
   config: {
     screens: {
       Home: 'home',
-      Profile: 'profile',
+      Profile: {
+        path: 'profile',
+        parse: {
+          code: String,
+          provider: String,
+          purpose: String,
+        },
+      },
       AuthLogin: 'auth/login',
       AuthRegister: 'auth/register',
       AuthReset: {
@@ -58,6 +67,12 @@ export default function App() {
   const navigationRef = useRef();
   const [initialURLChecked, setInitialURLChecked] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(null);
+
+  // Initialize Microsoft Clarity analytics
+  useEffect(() => {
+    Clarity.initialize('up0zbznx3e', { logLevel: Clarity.LogLevel.Verbose });
+    console.log('[Clarity] Analytics initialized (Verbose logging enabled)');
+  }, []);
 
   // Check if onboarding has been completed
   useEffect(() => {
@@ -131,6 +146,7 @@ export default function App() {
                   <Stack.Screen name="History" component={HistoryScreen} />
                   <Stack.Screen name="Profile" component={ProfileScreen} />
                   <Stack.Screen name="Subscription" component={SubscriptionScreen} />
+                  <Stack.Screen name="StripePayment" component={StripePaymentScreen} />
                 </Stack.Navigator>
               </NavigationContainer>
             </SafetyDisclaimer>

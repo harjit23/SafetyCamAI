@@ -12,6 +12,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, gql } from '@apollo/client';
 import axios from 'axios';
 import { API_BASE_URL } from '../config';
@@ -22,7 +23,7 @@ import Toast from 'react-native-toast-message';
 
 import { useAuth } from '../context/AuthContext';
 import { jwtDecode } from 'jwt-decode';
-import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN } from '../graphql/mutations'; // Imported GET_ME, VERIFY_RECEIPT_MUTATION, and REFRESH_TOKEN
+import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN, GET_PENDING_LOOKUPS } from '../graphql/mutations'; // Imported GET_ME, VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN, and GET_PENDING_LOOKUPS
 import { client } from '../apollo/client';
 import Navbar from '../components/Navbar';
 import { Platform } from 'react-native';
@@ -53,13 +54,12 @@ const ProfileScreen = () => {
     }
   }, [user]);
 
-  // Auth check
-  // Auth check & Local Data Refresh
+  // Auth check & Local Data Refresh — runs only when screen gains focus, NOT when user changes
   useFocusEffect(
     React.useCallback(() => {
       const checkAuthAndRefresh = async () => {
         const token = await AsyncStorage.getItem('accessToken');
-        if (!user || !token) {
+        if (!token) {
           navigation.navigate('AuthLogin');
           return;
         }
@@ -67,7 +67,6 @@ const ProfileScreen = () => {
         // Locally refresh user data from token to ensure immediate UI update after purchase
         try {
           const decoded = jwtDecode(token);
-          console.log('👀 Profile focused, locally updating from token:', decoded.paymentPlan);
           setUserProfile(prev => ({
             ...prev,
             paymentPlan: decoded.paymentPlan,
@@ -79,7 +78,7 @@ const ProfileScreen = () => {
         }
       };
       checkAuthAndRefresh();
-    }, [user, navigation])
+    }, [navigation]) // ✅ Removed 'user' from deps to prevent loop: user→setUserProfile→user
   );
 
   // Handle Return from Social Linking
@@ -107,12 +106,26 @@ const ProfileScreen = () => {
           console.log('[ProfileScreen] Linking exchange response:', response.data);
 
           if (response.data?.token) {
+            // Save the new token if provided
+            const tokenData = response.data.token;
+            const accessToken = typeof tokenData === 'string' ? tokenData : tokenData.token;
+            const refreshToken = typeof tokenData === 'object' ? tokenData.refreshToken : null;
+
+            if (accessToken) {
+              await AsyncStorage.setItem('accessToken', accessToken);
+              if (refreshToken) {
+                await AsyncStorage.setItem('refreshToken', refreshToken);
+              }
+              console.log('[ProfileScreen] New token saved after linking');
+            }
+
             Toast.show({ type: 'success', text1: 'Success', text2: 'Account linked successfully!' });
             // Refresh user data to show the new link
             await refreshUser();
             // Refetch data to update the Linked Accounts list
             await refetch();
-          } else if (response.data?.error) {
+          } 
+ else if (response.data?.error) {
             Toast.show({ type: 'error', text1: 'Linking Failed', text2: response.data.error });
           } else {
             Toast.show({ type: 'error', text1: 'Linking Failed', text2: 'Invalid response from server' });
@@ -341,104 +354,54 @@ const ProfileScreen = () => {
   }, []);
 
   // Fetch user details: Try GET_ME first, fallback to Token Decode
-  const { data: userData, loading, error, refetch } = useQuery(GET_ME, {
+  const { data: userData, loading, error, refetch: refetchMe } = useQuery(GET_ME, {
     fetchPolicy: 'network-only',
     onCompleted: async (data) => {
-      console.log('👤 GET_ME Query Response:', JSON.stringify(data, null, 2));
       if (data?.me) {
-        console.log('👤 User Profile Data:', data.me);
-        console.log('👤 Linked Accounts:', data.me.linked_accounts);
-
-        // 🔍 Log remaining attempts and plan type (Safe logging)
-        try {
-          const token = await AsyncStorage.getItem('accessToken');
-          if (token) {
-            const decoded = jwtDecode(token);
-            const expiry = parseDate(decoded.paymentExpiryDate);
-            const now = new Date();
-            const isExpired = isNaN(expiry.getTime()) || now > expiry;
-
-            console.log('--- 📊 Plan Status Calculation [ProfileScreen] ---');
-            console.log('Plan:', decoded.paymentPlan);
-            console.log('Raw Expiry Date:', decoded.paymentExpiryDate);
-            console.log('Parsed Expiry Date:', isNaN(expiry.getTime()) ? 'Invalid Date' : expiry.toLocaleString());
-            console.log('Current Date:', now.toLocaleString());
-            console.log('Is Expired:', isExpired);
-            console.log('Remaining Attempts (from backend):', data.me.pendingLookups);
-            console.log('-----------------------------------------------');
-          } else {
-            console.log(`📊 [ProfileScreen] Plan: Guest | Remaining Attempts: ${data.me.pendingLookups}`);
-          }
-        } catch (logError) {
-          console.warn('Failed to log payment status from token:', logError);
-        }
-
-        // Get payment info from token (GET_ME doesn't return payment info)
-        let paymentInfo = {};
-        try {
-          const token = await AsyncStorage.getItem('accessToken');
-          if (token) {
-            const decoded = jwtDecode(token);
-            console.log('🔑 FULL DECODED TOKEN (Payment Info):', JSON.stringify(decoded, null, 2));
-            paymentInfo = {
-              paymentPlan: decoded.paymentPlan,
-              paymentDate: decoded.paymentDate,
-              paymentExpiryDate: decoded.paymentExpiryDate,
-            };
-            console.log('👤 Payment info from token:', paymentInfo);
-          }
-        } catch (e) {
-          console.warn('Failed to get payment info from token:', e);
-        }
-
-        // Merge GET_ME data with payment info from token
-        // Priority: paymentInfo (from token) > data.me (from DB) for payment fields
-        // We trust the token more for immediate access rights
-        setUserProfile(prev => {
-          const updated = {
-            ...prev,
-            ...data.me, // Base data from DB
-            ...paymentInfo, // Overwrite with token payment info (if valid)
-          };
-          // 🔍 Log remaining attempts and plan type
-          console.log(`📊 [ProfileScreen] Plan: ${updated.paymentPlan || 'Free'} | Remaining Attempts: ${updated.pendingLookups ?? 'N/A'}`);
-          return updated;
-        });
+        setUserProfile(prev => ({
+          ...prev,
+          ...data.me,
+        }));
       }
     },
-    onError: async (err) => {
-      console.log('GET_ME failed, trying token decode', err);
-      // Fallback: Decode token
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (token) {
-          const decoded = jwtDecode(token);
-          console.log('🔑 FULL DECODED TOKEN (Fallback):', JSON.stringify(decoded, null, 2));
-          console.log('Decoded Token:', decoded);
-          setUserProfile({
-            name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
-            email: decoded.email || decoded.upn || 'No Email',
-            id: decoded.id || decoded.sub,
-            linked_accounts: decoded.linked_accounts,
-            paymentPlan: decoded.paymentPlan,
-            paymentDate: decoded.paymentDate,
-            paymentExpiryDate: decoded.paymentExpiryDate,
-          });
-        }
-      } catch (e) {
-        console.error('Token decode failed', e);
+    onError: (err) => {
+      console.log('GET_ME failed (this is a known backend issue), relying on token and pendingLookups', err);
+    }
+  });
+
+  // Separate query for pending lookups since GET_ME is broken
+  const { data: pendingData, refetch: refetchPending } = useQuery(GET_PENDING_LOOKUPS, {
+    variables: { userId: user?.id || (user?.token?.token ? jwtDecode(user.token.token).id : null) },
+    skip: !user,
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      if (data?.pendingLookups) {
+        setUserProfile(prev => ({
+          ...prev,
+          pendingLookups: data.pendingLookups.pendingLookups,
+        }));
       }
     }
   });
 
+  // Wrap in useCallback so it has a stable reference and doesn't re-trigger useFocusEffect on every render
+  const refetch = React.useCallback(async () => {
+    try {
+      await refetchMe();
+    } catch (e) {}
+    try {
+      await refetchPending();
+    } catch (e) {}
+  }, [refetchMe, refetchPending]);
 
-  // Refetch data when screen comes into focus
+
+  // Refetch data when screen comes into focus — only depends on refetch (stable), not refreshUser
   useFocusEffect(
     React.useCallback(() => {
       const refreshProfile = async () => {
         // 1. Refresh from local token/storage (fast)
         await refreshUser();
-        // 2. Refresh from network (slower, might fail)
+        // 2. Refresh from network queries (slower, might fail)
         try {
           await refetch();
         } catch (e) {
@@ -446,7 +409,7 @@ const ProfileScreen = () => {
         }
       };
       refreshProfile();
-    }, [refetch, refreshUser])
+    }, [refetch]) // ✅ Removed 'refreshUser' from deps — it's stable from context and doesn't need to be here
   );
 
   const onRefresh = React.useCallback(async () => {
@@ -540,10 +503,11 @@ const ProfileScreen = () => {
   };
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'black' }}>
       <Navbar />
-      <LinearGradient colors={['#007bff', '#67b0fa']} style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#007bff" />
+      <View style={{ flex: 1, backgroundColor: 'black' }}>
+        <LinearGradient colors={['#007bff', '#67b0fa']} style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor="black" />
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -687,7 +651,13 @@ const ProfileScreen = () => {
                           {!isActive && (
                             <TouchableOpacity
                               style={[styles.reactivateButton, { flex: 1, marginRight: 8 }]}
-                              onPress={() => navigation.navigate('Subscription')}
+                              onPress={() => {
+                                if (Platform.OS === 'android') {
+                                  navigation.navigate('StripePayment');
+                                } else {
+                                  navigation.navigate('Subscription');
+                                }
+                              }}
                             >
                               <Icon name="refresh" size={16} color="#fff" style={{ marginRight: 8 }} />
                               <Text style={styles.upgradeButtonText}>Reactivate Plan</Text>
@@ -695,7 +665,13 @@ const ProfileScreen = () => {
                           )}
                           <TouchableOpacity
                             style={[styles.upgradeButton, { flex: 1 }]}
-                            onPress={() => navigation.navigate('Subscription')}
+                            onPress={() => {
+                              if (Platform.OS === 'android') {
+                                navigation.navigate('StripePayment');
+                              } else {
+                                navigation.navigate('Subscription');
+                              }
+                            }}
                           >
                             <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
                             <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
@@ -723,18 +699,26 @@ const ProfileScreen = () => {
 
                 <TouchableOpacity
                   style={styles.upgradeButton}
-                  onPress={() => navigation.navigate('Subscription')}
+                  onPress={() => {
+                    if (Platform.OS === 'android') {
+                      navigation.navigate('StripePayment');
+                    } else {
+                      navigation.navigate('Subscription');
+                    }
+                  }}
                 >
                   <Icon name="rocket" size={16} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.restoreButtonSmall}
-                  onPress={handleRestorePurchase}
-                >
-                  <Text style={styles.restoreButtonSmallText}>Restore Purchase</Text>
-                </TouchableOpacity>
+                {Platform.OS === 'ios' && (
+                  <TouchableOpacity
+                    style={styles.restoreButtonSmall}
+                    onPress={handleRestorePurchase}
+                  >
+                    <Text style={styles.restoreButtonSmallText}>Restore Purchase</Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
           </View>
@@ -791,12 +775,13 @@ const ProfileScreen = () => {
                   ) : (
                     <TouchableOpacity
                       style={styles.linkButtonSmall}
-                      onPress={() => {
-                        const baseUrl = 'https://api.safetycamai.com'; // Or use API_BASE_URL from config
-                        // Using client=mobile to ensure it redirects back to app if configured
-                        // Added redirect_uri to ensure it comes back to Profile
+                      onPress={async () => {
+                        const baseUrl = 'https://api.safetycamai.com';
                         const redirectUri = 'safetycamai://profile';
                         const url = `${baseUrl}/auth/${provider}?client=mobile&purpose=link&userId=${userProfile.id}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+                        // Store purpose and provider in AsyncStorage as reliable fallback
+                        await AsyncStorage.setItem('linkingPurpose', 'link');
+                        await AsyncStorage.setItem('pendingProvider', provider);
                         Linking.openURL(url);
                       }}
                     >
@@ -841,7 +826,8 @@ const ProfileScreen = () => {
 
         </ScrollView>
       </LinearGradient>
-    </>
+      </View>
+    </SafeAreaView>
   );
 };
 

@@ -78,5 +78,10 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity> -->
+      <!-- Background Upload Service -->
+      <service
+        android:name="com.vydia.RNUploader.UploadService"
+        android:enabled="true"
+        android:exported="false" />
     </application>
 </manifest>

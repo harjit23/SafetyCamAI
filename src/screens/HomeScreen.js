@@ -219,7 +219,7 @@ export default function HomeScreen() {
         // Redirect after a delay
         setTimeout(async () => {
           if (isGuest) {
-            await AsyncStorage.setItem('redirectToSubscription', 'true');
+            // Navigate to login — after login, return to Home (no subscription redirect)
             navigation.navigate('AuthLogin');
           } else {
             navigation.navigate('Subscription');
@@ -553,14 +553,16 @@ export default function HomeScreen() {
     const token = await AsyncStorage.getItem('accessToken');
     
     if (!user || !token) {
-      // User is not logged in, set flag and navigate to login screen
+      // User is not logged in, navigate to login — after login return to Home
       console.log('User not logged in, navigating to AuthLogin...');
-      await AsyncStorage.setItem('redirectToSubscription', 'true');
       navigation.navigate('AuthLogin');
     } else {
-      // User is logged in, navigate to subscription screen
-      console.log('User logged in, navigating to Subscription...');
-      navigation.navigate('Subscription');
+      // User is logged in, navigate to StripePayment screen on Android
+      if (Platform.OS === 'android') {
+        navigation.navigate('StripePayment');
+      } else {
+        navigation.navigate('Subscription');
+      }
     }
   };
 
@@ -571,7 +573,7 @@ export default function HomeScreen() {
 
       <LinearGradient colors={['#007bff', '#69bfff']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <StatusBar barStyle="light-content" backgroundColor="#007bff" />
+          <StatusBar barStyle="light-content" backgroundColor="black" />
           <Text style={styles.heading}>Explore Publicly Available Look-Alike Images.</Text>
           <Text style={styles.subHeading}>
             Upload a photo to discover visually similar images found on publicly accessible websites

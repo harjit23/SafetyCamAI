@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.13.8",
+    "@microsoft/react-native-clarity": "^4.5.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/netinfo": "^11.4.1",
     "@react-native-vector-icons/fontawesome": "^12.2.0",
@@ -25,7 +26,6 @@
     "jwt-decode": "^4.0.0",
     "react": "19.1.0",
     "react-native": "0.80.1",
-    "react-native-background-upload": "^6.6.0",
     "react-native-blob-util": "^0.22.2",
     "react-native-gesture-handler": "^2.27.1",
     "react-native-iap": "^12.16.4",

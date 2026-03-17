@@ -140,10 +140,11 @@ export default Navbar;
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#007bff',
+    backgroundColor: 'black',
   },
   header: {
     height: 60,
+    backgroundColor: '#007bff',
     paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -40,12 +40,19 @@ export default function AuthScreen() {
   const { showLoader, hideLoader } = useLoader();
   const [verifyEmailAddress] = useMutation(VERIFY_EMAIL_ADDRESS_MUTATION);
 
+  // Keep a ref to the latest user without making it a useEffect dependency
+  const userRef = React.useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
+  // Guard so the code exchange runs at most once per unique code
+  const handledCodeRef = React.useRef(null);
+
   useEffect(() => {
     const params = route.params || {};
-    const { code, email, provider } = params;
+    const { code, email, provider, purpose } = params;
 
     // Redirect if already logged in and not exchanging a code
-    if (user && !code) {
+    if (userRef.current && !code) {
       navigation.reset({
         index: 0,
         routes: [{ name: 'Home' }],
@@ -61,81 +68,98 @@ export default function AuthScreen() {
         try {
           targetProvider = await AsyncStorage.getItem('pendingProvider');
           console.log('[AuthScreen] Retrieved pending provider:', targetProvider);
-          // Clear it immediately
           await AsyncStorage.removeItem('pendingProvider');
         } catch (e) {
           console.warn('Failed to get pending provider', e);
         }
       }
 
-      if (code && targetProvider && !email) {
-        console.log('[AuthScreen] Received social login params:', { code, provider: targetProvider });
-        try {
-          showLoader('Exchanging code...');
-          console.log(`[AuthScreen] Exchanging code with ${API_BASE_URL}/auth/${targetProvider}/exchange`);
-          const response = await axios.post(
-            `${API_BASE_URL}/auth/${targetProvider}/exchange`,
-            JSON.stringify(code),
-            {
-              headers: {
-                'Content-Type': 'application/json',
-              },
+      if (!code || !targetProvider || email) return;
+
+      // Guard: only handle each unique code once
+      if (handledCodeRef.current === code) {
+        console.log('[AuthScreen] Code already handled, skipping:', code);
+        return;
+      }
+      handledCodeRef.current = code;
+
+      // If this is a linking code (not a login), redirect to Profile
+      const isLinkPurpose = purpose === 'link';
+      const storedPurpose = await AsyncStorage.getItem('linkingPurpose');
+      const isStoredLink = storedPurpose === 'link';
+
+      if ((isLinkPurpose || isStoredLink) && userRef.current) {
+        if (isStoredLink) await AsyncStorage.removeItem('linkingPurpose');
+        console.log('[AuthScreen] Detected linking code, redirecting to Profile...');
+        navigation.navigate('Profile', { code, provider: targetProvider, purpose: 'link' });
+        return;
+      }
+      if (storedPurpose) await AsyncStorage.removeItem('linkingPurpose');
+
+      // Normal social login exchange
+      console.log('[AuthScreen] Received social login params:', { code, provider: targetProvider });
+      try {
+        showLoader('Exchanging code...');
+        console.log(`[AuthScreen] Exchanging code with ${API_BASE_URL}/auth/${targetProvider}/exchange`);
+        const response = await axios.post(
+          `${API_BASE_URL}/auth/${targetProvider}/exchange`,
+          JSON.stringify(code),
+          {
+            headers: {
+              'Content-Type': 'application/json',
             },
-          );
-          console.log('[AuthScreen] Exchange response:', response.data);
+          },
+        );
+        console.log('[AuthScreen] Exchange response:', response.data);
 
-          const { token, refreshToken } = response.data?.token || {};
+        const { token, refreshToken } = response.data?.token || {};
 
-          if (token && refreshToken) {
-            console.log('[AuthScreen] Tokens received, saving...');
-            await AsyncStorage.setItem('accessToken', token);
-            await AsyncStorage.setItem('refreshToken', refreshToken);
+        if (token && refreshToken) {
+          console.log('[AuthScreen] Tokens received, saving...');
+          await AsyncStorage.setItem('accessToken', token);
+          await AsyncStorage.setItem('refreshToken', refreshToken);
 
-            // Decode user id
-            try {
-              const decoded = jwtDecode(token);
-              const userId = decoded?.id || decoded?.userId || decoded?.sub || null;
-              if (userId) {
-                await AsyncStorage.setItem('currentUserId', String(userId));
-              }
-            } catch (_) {}
-
-            // Update context and navigate
-            console.log('[AuthScreen] Setting user and checking redirection...');
-            setUser(response.data);
-
-            // Check if we should redirect to subscription screen
-            const redirectToSubscription = await AsyncStorage.getItem('redirectToSubscription');
-            if (redirectToSubscription === 'true') {
-              await AsyncStorage.removeItem('redirectToSubscription');
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Subscription' }],
-              });
-            } else {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Home' }],
-              });
+          try {
+            const decoded = jwtDecode(token);
+            const userId = decoded?.id || decoded?.userId || decoded?.sub || null;
+            if (userId) {
+              await AsyncStorage.setItem('currentUserId', String(userId));
             }
+          } catch (_) {}
+
+          console.log('[AuthScreen] Setting user and checking redirection...');
+          setUser(response.data);
+
+          const redirectToSubscription = await AsyncStorage.getItem('redirectToSubscription');
+          if (redirectToSubscription === 'true') {
+            await AsyncStorage.removeItem('redirectToSubscription');
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Subscription' }],
+            });
           } else {
-            console.error('[AuthScreen] Invalid response structure:', response.data);
-            throw new Error('Invalid token response');
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Home' }],
+            });
           }
-        } catch (error) {
-          console.error('Error exchanging social code:', error);
-          
-          let errorMsg = 'Login failed. Please try again.';
-          if (error.response?.data?.error) {
-            errorMsg = error.response.data.error;
-          } else if (error.message) {
-            errorMsg = error.message;
-          }
-          
-          showAlert(errorMsg);
-        } finally {
-          hideLoader();
+        } else {
+          console.error('[AuthScreen] Invalid response structure:', response.data);
+          throw new Error('Invalid token response');
         }
+      } catch (error) {
+        console.error('Error exchanging social code:', error);
+        
+        let errorMsg = 'Login failed. Please try again.';
+        if (error.response?.data?.error) {
+          errorMsg = error.response.data.error;
+        } else if (error.message) {
+          errorMsg = error.message;
+        }
+        
+        showAlert(errorMsg);
+      } finally {
+        hideLoader();
       }
     };
 
@@ -167,7 +191,7 @@ export default function AuthScreen() {
       default:
         setActiveScreen('login');
     }
-  }, [route.name, route.params, verifyEmailAddress, showAlert, setUser, navigation]);
+  }, [route.name, route.params, verifyEmailAddress, showAlert, setUser, navigation]); // ✅ 'user' removed — using userRef instead
 
   const renderScreen = () => {
     switch (activeScreen) {
