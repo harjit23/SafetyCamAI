@@ -273,7 +273,13 @@ export default function SubscriptionScreen() {
         }
     };
 
-    const handleCancel = () => navigation.goBack();
+    const handleCancel = () => {
+        if (navigation.canGoBack()) {
+            navigation.goBack();
+        } else {
+            navigation.navigate('Home');
+        }
+    };
 
     // ─── Render ───────────────────────────────────────────────────────────────
     return (

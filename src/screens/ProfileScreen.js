@@ -351,6 +351,13 @@ const ProfileScreen = () => {
 
         // 🔍 Log remaining attempts and plan type (Safe logging)
         try {
+          console.log('--- 🛡️ MFA/2FA Status Check ---');
+          console.log('User ID:', data.me.id);
+          console.log('Email:', data.me.email);
+          // Check for common MFA field names in case they exist in the response
+          console.log('MFA Enabled (potential field):', data.me.isMfaEnabled || data.me.mfaEnabled || data.me.isTwoFactorEnabled || data.me.twoFactorEnabled || 'Field not found in response');
+          console.log('-------------------------------');
+
           const token = await AsyncStorage.getItem('accessToken');
           if (token) {
             const decoded = jwtDecode(token);

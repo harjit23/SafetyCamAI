@@ -29,7 +29,7 @@ export default function MfaVerify({ switchTo }) {
   const [activeIndex, setActiveIndex] = useState(null);
 
   const [showPaste, setShowPaste] = useState(false);
-const [pastePosition, setPastePosition] = useState({ x: 0, y: 0 });
+  const [pastePosition, setPastePosition] = useState({ x: 0, y: 0 });
 
 
 
@@ -101,8 +101,11 @@ const [pastePosition, setPastePosition] = useState({ x: 0, y: 0 });
 
     showLoader('Verifying code...');
     try {
+      console.log('[MFA] Validating OTP:', otp);
       const { data } = await validateOtp({ variables: { otp } });
       const user = data?.validateOtp;
+
+      console.log('[MFA] validateOtp response data:', JSON.stringify(data, null, 2));
 
       if (!user) {
         Toast.show({ type: 'error', text1: 'Verification failed' });
@@ -178,12 +181,12 @@ const [pastePosition, setPastePosition] = useState({ x: 0, y: 0 });
               }
             }}
             onPressIn={(e) => {
-  setShowPaste(true);
-  setPastePosition({
-    x: e.nativeEvent.pageX,
-    y: e.nativeEvent.pageY - 40, // show above
-  });
-}}
+              setShowPaste(true);
+              setPastePosition({
+                x: e.nativeEvent.pageX,
+                y: e.nativeEvent.pageY - 40, // show above
+              });
+            }}
 
           />
         ))}

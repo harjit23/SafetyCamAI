@@ -87,6 +87,8 @@ export const GET_ME = gql`
       paymentPlan
       paymentDate
       paymentExpiryDate
+      isTwoFactorEnabled
+      mfaEnabled
     }
   }
 `;

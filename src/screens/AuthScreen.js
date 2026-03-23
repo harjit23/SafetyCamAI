@@ -108,9 +108,13 @@ export default function AuthScreen() {
             const redirectToSubscription = await AsyncStorage.getItem('redirectToSubscription');
             if (redirectToSubscription === 'true') {
               await AsyncStorage.removeItem('redirectToSubscription');
+              // Ensure Home is in the stack so Back button works
               navigation.reset({
-                index: 0,
-                routes: [{ name: 'Subscription' }],
+                index: 1,
+                routes: [
+                  { name: 'Home' },
+                  { name: 'Subscription' }
+                ],
               });
             } else {
               navigation.reset({
