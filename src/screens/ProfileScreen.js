@@ -58,28 +58,14 @@ const ProfileScreen = () => {
   // Auth check & Local Data Refresh
   useFocusEffect(
     React.useCallback(() => {
-      const checkAuthAndRefresh = async () => {
+      const checkAuth = async () => {
         const token = await AsyncStorage.getItem('accessToken');
         if (!user || !token) {
           navigation.navigate('AuthLogin');
           return;
         }
-
-        // Locally refresh user data from token to ensure immediate UI update after purchase
-        try {
-          const decoded = jwtDecode(token);
-          console.log('👀 Profile focused, locally updating from token:', decoded.paymentPlan);
-          setUserProfile(prev => ({
-            ...prev,
-            paymentPlan: decoded.paymentPlan,
-            paymentExpiryDate: decoded.paymentExpiryDate,
-            pendingLookups: decoded.pendingLookups !== undefined ? decoded.pendingLookups : prev.pendingLookups
-          }));
-        } catch (e) {
-          console.log('Failed to locally refresh profile from token:', e);
-        }
       };
-      checkAuthAndRefresh();
+      checkAuth();
     }, [user, navigation])
   );
 

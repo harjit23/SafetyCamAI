@@ -142,6 +142,32 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const performTokenRefresh = async () => {
+    try {
+      const refreshToken = await AsyncStorage.getItem('refreshToken');
+      if (!refreshToken) return null;
+
+      console.log('[AuthContext] 🔄 Attempting silent token refresh...');
+      const { data } = await client.mutate({
+        mutation: REFRESH_TOKEN,
+        variables: { token: refreshToken },
+      });
+
+      if (data?.refreshToken?.token) {
+        const newToken = data.refreshToken.token;
+        await AsyncStorage.setItem('accessToken', newToken);
+        console.log('[AuthContext] ✅ Token refreshed successfully');
+
+        // After refreshing token, we should also refresh the user state to get new claims
+        await refreshUser(false);
+        return newToken;
+      }
+    } catch (e) {
+      console.log('[AuthContext] ❌ Token refresh failed:', e.message);
+    }
+    return null;
+  };
+
   const refreshUser = async (fromBackend = false) => {
     try {
       const accessToken = await AsyncStorage.getItem('accessToken');
@@ -182,7 +208,6 @@ export const AuthProvider = ({ children }) => {
           }
 
           // Ensure payment fields are current from token if backend didn't provide them
-          // (Token is often the most current source of truth for immediate access)
           const mergedUser = {
             ...finalUser,
             paymentPlan: updatedUser?.paymentPlan || decoded.paymentPlan,
@@ -204,7 +229,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, refreshUser, setUser: login, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, refreshUser, performTokenRefresh, setUser: login, isLoading }}>
+
       {children}
     </AuthContext.Provider>
   );

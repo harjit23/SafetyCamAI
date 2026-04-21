@@ -58,7 +58,7 @@ export default function HomeScreen() {
   // attempts UI state
   const [remainingAttempts, setRemainingAttempts] = useState(null);
   const [attemptsResetAt, setAttemptsResetAt] = useState(null);
-  const [paymentPlan, setPaymentPlan] = useState(null);
+
 
   const subObserverRef = useRef(null);
   const subIdRef = useRef(null);
@@ -244,47 +244,15 @@ export default function HomeScreen() {
       setRemainingAttempts(attempts);
       setAttemptsResetAt(pending?.lastDate ?? null);
 
-      // Extract plan from token if available
-      if (token) {
-        try {
-          const decoded = jwtDecode(token);
-          setPaymentPlan(decoded.paymentPlan || null);
-        } catch (e) {
-          console.warn('Failed to decode token for plan:', e);
-        }
-      } else {
-        setPaymentPlan(null);
-      }
-
       // 🔍 Log remaining attempts and plan type (Safe logging)
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (token) {
-          const decoded = jwtDecode(token);
-          const expiry = parseDate(decoded.paymentExpiryDate);
-          const now = new Date();
-          const isExpired = isNaN(expiry.getTime()) || now > expiry;
-          
-          console.log('--- 📊 Plan Status Calculation [HomeScreen] ---');
-          console.log('Plan:', decoded.paymentPlan);
-          console.log('Raw Expiry Date:', decoded.paymentExpiryDate);
-          console.log('Parsed Expiry Date:', isNaN(expiry.getTime()) ? 'Invalid Date' : expiry.toLocaleString());
-          console.log('Current Date:', now.toLocaleString());
-          console.log('Is Expired:', isExpired);
-          console.log('Remaining Attempts (from backend):', attempts);
-          console.log('-----------------------------------------------');
-        } else {
-          console.log(`📊 [HomeScreen] Plan: Guest | Remaining Attempts: ${attempts}`);
-        }
-      } catch (logError) {
-        console.log('📊 [HomeScreen] Remaining Attempts:', attempts);
-      }
+      console.log(`📊 [HomeScreen] Plan: ${user?.paymentPlan || 'Guest'} | Remaining Attempts: ${attempts}`);
     } catch (e) {
       console.error('❌ [HomeScreen] fetchPending Error:', e);
       setRemainingAttempts(null);
       setAttemptsResetAt(null);
     }
   }, [getUserId, user]);
+
 
   useFocusEffect(useCallback(() => { fetchPending(); }, [fetchPending]));
   useEffect(() => { if (state === 'upload') fetchPending(); }, [state, fetchPending]);
@@ -537,9 +505,10 @@ export default function HomeScreen() {
 
           {(!image || state === 'upload') && <UploadBox onUpload={handleImageSelect} />}
 
-          {remainingAttempts !== null && !paymentPlan?.toLowerCase().includes('enterprise') && (
+          {remainingAttempts !== null && !user?.paymentPlan?.toLowerCase().includes('enterprise') && (
             <Text style={styles.attemptsText}>Remaining Attempts: {remainingAttempts}</Text>
           )}
+
 
           {state === 'verifying' && (
             <DetectionSteps 
