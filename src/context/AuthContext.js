@@ -98,6 +98,9 @@ export const AuthProvider = ({ children }) => {
     try {
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       console.log('[AuthContext] User data saved to storage');
+
+      // Immediately trigger a backend sync to get full profile details (plan, etc.)
+      await refreshUser(true);
     } catch (error) {
       console.log('[AuthContext] Error saving user data:', error);
     }

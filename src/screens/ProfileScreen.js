@@ -52,10 +52,11 @@ const ProfileScreen = () => {
         email: user.email || prev.email,
         id: user.id || prev.id,
         linked_accounts: user.linked_accounts || prev.linked_accounts,
-        // ── Subscription fields from backend (DO NOT override from JWT token) ──
-        paymentPlan: user.paymentPlan,
-        paymentDate: user.paymentDate,
-        paymentExpiryDate: user.paymentExpiryDate,
+        // ── Subscription fields ──
+        // Only update if context has a defined value, otherwise keep current (fallback)
+        paymentPlan: user.paymentPlan !== undefined ? user.paymentPlan : prev.paymentPlan,
+        paymentDate: user.paymentDate !== undefined ? user.paymentDate : prev.paymentDate,
+        paymentExpiryDate: user.paymentExpiryDate !== undefined ? user.paymentExpiryDate : prev.paymentExpiryDate,
         pendingLookups: user.pendingLookups !== undefined ? user.pendingLookups : prev.pendingLookups,
       }));
     }
@@ -227,29 +228,33 @@ const ProfileScreen = () => {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load basic identity (name/email/id) from token ONLY to avoid a blank screen
-  // while GET_ME loads. Payment fields intentionally excluded — they come from
-  // AuthContext (refreshUser → GET_ME) which fires on mount.
+  // Load identity and basic plan from token ONLY to avoid a blank screen
+  // or "Free Plan" flicker while the fresh GET_ME sync loads.
   useEffect(() => {
-    const loadIdentityFromToken = async () => {
+    const loadFromTokenFallback = async () => {
       try {
         const token = await AsyncStorage.getItem('accessToken');
         if (token) {
           const decoded = jwtDecode(token);
-          // ONLY seed non-payment fields to prevent stale plan from showing
+          console.log('[ProfileScreen] 🎫 Initial fallback from local token:', decoded.paymentPlan);
+
           setUserProfile(prev => ({
             ...prev,
             name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
             email: decoded.email || decoded.upn || prev.email,
             id: decoded.id || decoded.sub || prev.id,
             linked_accounts: decoded.linked_accounts || prev.linked_accounts,
+            // Restore these as fallbacks so UI shows plan immediately
+            paymentPlan: decoded.paymentPlan,
+            paymentExpiryDate: decoded.paymentExpiryDate,
+            pendingLookups: decoded.pendingLookups !== undefined ? decoded.pendingLookups : prev.pendingLookups,
           }));
         }
       } catch (e) {
         console.error('[ProfileScreen] Initial token decode failed', e);
       }
     };
-    loadIdentityFromToken();
+    loadFromTokenFallback();
   }, []);
 
   // ── FETCH USER DETAILS FROM BACKEND ──────────────────────────────────────
