@@ -32,7 +32,8 @@ import { ReportMisuseCard } from '../components/ReportMisuse';
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, performTokenRefresh } = useAuth();
+
   const [deleteUser] = useMutation(DELETE_USER);
   const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
   const [refreshTokenMutation] = useMutation(REFRESH_TOKEN);

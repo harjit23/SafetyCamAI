@@ -29,7 +29,8 @@ const itemSkus = ['com.safetycamai.monthly'];
 
 export default function SubscriptionScreen() {
     const navigation = useNavigation();
-    const { refreshUser } = useAuth();
+    const { refreshUser, performTokenRefresh } = useAuth();
+
     const [verifyReceipt] = useMutation(VERIFY_RECEIPT_MUTATION);
     const [refreshTokenMutation] = useMutation(REFRESH_TOKEN);
     const { showLoader, hideLoader } = useLoader();
