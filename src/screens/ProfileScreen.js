@@ -326,22 +326,19 @@ const ProfileScreen = () => {
     },
     onError: async (err) => {
       console.log('GET_ME failed, trying token decode', err);
-      // Fallback: Decode token
+      // Fallback: Decode token for non-payment fields only.
+      // Payment fields are managed by useEffect([user]) from AuthContext.
       try {
         const token = await AsyncStorage.getItem('accessToken');
         if (token) {
           const decoded = jwtDecode(token);
-          console.log('🔑 FULL DECODED TOKEN (Fallback):', JSON.stringify(decoded, null, 2));
-          console.log('Decoded Token:', decoded);
-          setUserProfile({
-            name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
-            email: decoded.email || decoded.upn || 'No Email',
-            id: decoded.id || decoded.sub,
-            linked_accounts: decoded.linked_accounts,
-            paymentPlan: decoded.paymentPlan,
-            paymentDate: decoded.paymentDate,
-            paymentExpiryDate: decoded.paymentExpiryDate,
-          });
+          setUserProfile(prev => ({
+            ...prev,
+            name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
+            email: decoded.email || decoded.upn || prev.email,
+            id: decoded.id || decoded.sub || prev.id,
+            linked_accounts: decoded.linked_accounts || prev.linked_accounts,
+          }));
         }
       } catch (e) {
         console.error('Token decode failed', e);

@@ -144,13 +144,17 @@ export const AuthProvider = ({ children }) => {
 
   const performTokenRefresh = async () => {
     try {
-      const refreshToken = await AsyncStorage.getItem('refreshToken');
-      if (!refreshToken) return null;
+      const accessToken = await AsyncStorage.getItem('accessToken');
+      const refreshTokenValue = await AsyncStorage.getItem('refreshToken');
+      if (!accessToken || !refreshTokenValue) {
+        console.log('[AuthContext] ⚠️ Cannot refresh: missing accessToken or refreshToken');
+        return null;
+      }
 
       console.log('[AuthContext] 🔄 Attempting silent token refresh...');
       const { data } = await client.mutate({
         mutation: REFRESH_TOKEN,
-        variables: { token: refreshToken },
+        variables: { token: accessToken, refreshToken: refreshTokenValue },
       });
 
       if (data?.refreshToken?.token) {
@@ -160,7 +164,6 @@ export const AuthProvider = ({ children }) => {
           await AsyncStorage.setItem('refreshToken', data.refreshToken.refreshToken);
         }
         console.log('[AuthContext] ✅ Token refreshed successfully');
-        // NOTE: Do NOT call refreshUser here to avoid circular calls
         return newToken;
       }
     } catch (e) {
