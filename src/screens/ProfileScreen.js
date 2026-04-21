@@ -47,16 +47,10 @@ const ProfileScreen = () => {
       console.log('[ProfileScreen] 🔄 Syncing from AuthContext. Plan:', user.paymentPlan);
       setUserProfile(prev => ({
         ...prev,
-        // Identity fields
-        name: user.name || prev.name,
-        email: user.email || prev.email,
-        id: user.id || prev.id,
-        linked_accounts: user.linked_accounts || prev.linked_accounts,
-        // ── Subscription fields ──
-        // Only update if context has a defined value, otherwise keep current (fallback)
-        paymentPlan: user.paymentPlan !== undefined ? user.paymentPlan : prev.paymentPlan,
-        paymentDate: user.paymentDate !== undefined ? user.paymentDate : prev.paymentDate,
-        paymentExpiryDate: user.paymentExpiryDate !== undefined ? user.paymentExpiryDate : prev.paymentExpiryDate,
+        // Identity & Subscription fields
+        // We now trust the AuthContext fully.
+        ...user,
+        // Ensure pendingLookups is merged gracefully
         pendingLookups: user.pendingLookups !== undefined ? user.pendingLookups : prev.pendingLookups,
       }));
     }

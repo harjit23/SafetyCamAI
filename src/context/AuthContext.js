@@ -94,7 +94,8 @@ export const AuthProvider = ({ children }) => {
   // LOGIN – called after successful auth
   // ────────────────────────────────────────────────
   const login = async (userData) => {
-    setUser(userData);
+    // CRITICAL: Force new object reference
+    setUser({ ...userData });
     try {
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       console.log('[AuthContext] User data saved to storage');
@@ -173,16 +174,14 @@ export const AuthProvider = ({ children }) => {
   //
   // fromBackend = false → local only (token/cache), used for quick restores
   // ────────────────────────────────────────────────
-  const refreshUser = async (fromBackend = false) => {
+  const refreshUser = async (fromBackend = false, isRetry = false) => {
     try {
       const accessToken = await AsyncStorage.getItem('accessToken');
       if (!accessToken) return;
 
       if (fromBackend) {
-        // ── STEP 1: Fetch fresh data from backend ────────────────────────
-        // The backend has the most accurate subscription state.
-        // We do NOT defer this behind a token refresh — we want fresh data NOW.
-        console.log('[AuthContext] 🔄 Syncing user state from backend (GET_ME)...');
+        // Only log "Syncing..." on the first attempt to avoid log spam
+        if (!isRetry) console.log('[AuthContext] 🔄 Syncing user state from backend (GET_ME)...');
         let backendUser = null;
         try {
           const { data } = await client.query({
@@ -212,16 +211,25 @@ export const AuthProvider = ({ children }) => {
           };
 
           console.log('[AuthContext] 🔄 Setting user state from backend. Final plan:', updatedUser.paymentPlan);
-          setUser(prev => ({ ...prev, ...updatedUser }));
+
+          // CRITICAL FIX: Force a NEW object reference to guarantee React re-renders all components
+          setUser({ ...updatedUser });
           await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
 
-          // ── STEP 2: THEN refresh the JWT token (non-blocking, best effort) ─
-          // We do this AFTER updating UI so the user doesn't wait for token refresh.
+          // ── STEP 2: Background Syncs ──────────────────────────────────────
+          // 1. Refresh the JWT token (non-blocking)
           performTokenRefresh().catch(e => {
             console.log('[AuthContext] Background token refresh failed:', e.message);
           });
 
-          return; // Done — backend was our source of truth
+          // 2. Delayed retry: The backend DB might have slight replication delay.
+          // Trigger a second sync after 1 second to ensure we have the absolute latest status.
+          setTimeout(() => {
+            console.log('[AuthContext] 🔄 Performing delayed backend-sync retry...');
+            refreshUser(true, true); // Added isRetry flag to prevent infinite loops
+          }, 1000);
+
+          return; // Done
         }
         // If backend failed, fall through to token-based refresh as fallback
         console.log('[AuthContext] ⚠️ Backend unavailable, falling back to cached token data');
