@@ -308,34 +308,42 @@ const ProfileScreen = () => {
           console.warn('Failed to log payment status from token:', logError);
         }
 
-        // Get payment info from token (GET_ME doesn't return payment info)
+        // Get payment info from AuthContext (most up-to-date, updated after restore)
+        // Fallback to token decode only if AuthContext user is not yet updated
         let paymentInfo = {};
         try {
-          const token = await AsyncStorage.getItem('accessToken');
-          if (token) {
-            const decoded = jwtDecode(token);
-            console.log('🔑 FULL DECODED TOKEN (Payment Info):', JSON.stringify(decoded, null, 2));
+          if (user?.paymentPlan) {
+            // Best case: AuthContext already has fresh data from backend refresh
             paymentInfo = {
-              paymentPlan: decoded.paymentPlan,
-              paymentDate: decoded.paymentDate,
-              paymentExpiryDate: decoded.paymentExpiryDate,
+              paymentPlan: user.paymentPlan,
+              paymentDate: user.paymentDate,
+              paymentExpiryDate: user.paymentExpiryDate,
             };
-            console.log('👤 Payment info from token:', paymentInfo);
+            console.log('👤 Payment info from AuthContext:', paymentInfo);
+          } else {
+            // Fallback: decode from token
+            const token = await AsyncStorage.getItem('accessToken');
+            if (token) {
+              const decoded = jwtDecode(token);
+              paymentInfo = {
+                paymentPlan: decoded.paymentPlan,
+                paymentDate: decoded.paymentDate,
+                paymentExpiryDate: decoded.paymentExpiryDate,
+              };
+              console.log('👤 Payment info from token (fallback):', paymentInfo);
+            }
           }
         } catch (e) {
-          console.warn('Failed to get payment info from token:', e);
+          console.warn('Failed to get payment info:', e);
         }
 
-        // Merge GET_ME data with payment info from token
-        // Priority: paymentInfo (from token) > data.me (from DB) for payment fields
-        // We trust the token more for immediate access rights
+        // Merge GET_ME data with payment info
         setUserProfile(prev => {
           const updated = {
             ...prev,
             ...data.me, // Base data from DB
-            ...paymentInfo, // Overwrite with token payment info (if valid)
+            ...paymentInfo, // Overwrite with fresh payment info
           };
-          // 🔍 Log remaining attempts and plan type
           console.log(`📊 [ProfileScreen] Plan: ${updated.paymentPlan || 'Free'} | Remaining Attempts: ${updated.pendingLookups ?? 'N/A'}`);
           return updated;
         });
@@ -371,9 +379,9 @@ const ProfileScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       const refreshProfile = async () => {
-        // 1. Refresh from local token/storage (fast)
-        await refreshUser();
-        // 2. Refresh from network (slower, might fail)
+        // Refresh from backend (gets fresh payment plan + updates token)
+        await refreshUser(true);
+        // Also refetch GET_ME to update local profile state
         try {
           await refetch();
         } catch (e) {
