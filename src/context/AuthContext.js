@@ -4,6 +4,9 @@ import { jwtDecode } from 'jwt-decode';
 import { AppState } from 'react-native';
 
 import authEvents, { AUTH_EVENTS } from '../utils/authEvents';
+import { parseDate } from '../utils/dateUtils';
+import { client } from '../apollo/client';
+import { GET_ME, REFRESH_TOKEN } from '../graphql/mutations';
 
 const AuthContext = createContext();
 
@@ -70,6 +73,8 @@ export const AuthProvider = ({ children }) => {
         console.log('[AuthContext] Error restoring session:', error);
       } finally {
         setIsLoading(false);
+        // Refresh from backend after session is restored to ensure latest subscription status
+        refreshUser(true);
       }
     };
 
@@ -137,40 +142,58 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const refreshUser = async () => {
+  const refreshUser = async (fromBackend = false) => {
     try {
       const accessToken = await AsyncStorage.getItem('accessToken');
       const savedUserData = await AsyncStorage.getItem('userData');
 
       if (accessToken) {
-        // Try to decode token for fresh claims
+        let updatedUser = null;
+
+        if (fromBackend) {
+          console.log('[AuthContext] 🔄 Refreshing user data from backend...');
+          try {
+            const { data } = await client.query({
+              query: GET_ME,
+              fetchPolicy: 'network-only',
+              context: { headers: { authorization: `Bearer ${accessToken}` } },
+            });
+
+            if (data?.me) {
+              updatedUser = { ...data.me };
+              console.log('[AuthContext] ✅ Fresh data from backend. Plan:', updatedUser.paymentPlan);
+            }
+          } catch (backendError) {
+            console.log('[AuthContext] ❌ Backend refresh failed, falling back to token:', backendError.message);
+          }
+        }
+
+        // Fallback or secondary refresh from token claims
         try {
           const decoded = jwtDecode(accessToken);
-          // If we have saved user data, merge it with token data
-          let finalUser = {};
 
-          if (savedUserData) {
+          // Merge logic: prefer backend data if we got it, else use token claims
+          let finalUser = updatedUser || {};
+
+          if (!updatedUser && savedUserData) {
             try {
               finalUser = JSON.parse(savedUserData);
             } catch (e) { }
           }
 
-          // Token claims take precedence for plan/expiry
-          const updatedUser = {
+          // Ensure payment fields are current from token if backend didn't provide them
+          // (Token is often the most current source of truth for immediate access)
+          const mergedUser = {
             ...finalUser,
-            paymentPlan: decoded.paymentPlan,
-            paymentExpiryDate: decoded.paymentExpiryDate,
-            pendingLookups: decoded.pendingLookups // if available in token
+            paymentPlan: updatedUser?.paymentPlan || decoded.paymentPlan,
+            paymentExpiryDate: updatedUser?.paymentExpiryDate || decoded.paymentExpiryDate,
+            pendingLookups: updatedUser?.pendingLookups !== undefined ? updatedUser.pendingLookups : decoded.pendingLookups
           };
 
-          console.log('[AuthContext] 🔄 Refreshing user state. Plan:', updatedUser.paymentPlan);
+          console.log('[AuthContext] 🔄 Final user state set. Plan:', mergedUser.paymentPlan);
 
-          // Force new object reference to trigger React updates
-          setUser({ ...updatedUser });
-
-          // Update stored user data
-          await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
-          console.log('[AuthContext] User refreshed from token/storage');
+          setUser({ ...mergedUser });
+          await AsyncStorage.setItem('userData', JSON.stringify(mergedUser));
         } catch (e) {
           console.log('[AuthContext] Failed to decode token during refresh:', e);
         }

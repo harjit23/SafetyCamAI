@@ -19,6 +19,7 @@ import Toast from 'react-native-toast-message';
 import Icon from 'react-native-vector-icons/FontAwesome';
 
 import { useAuth } from '../context/AuthContext';
+import { parseDate } from '../utils/dateUtils';
 import { useLoader } from '../context/LoaderContext';
 import { LOGIN_MUTATION } from '../graphql/mutations';
 import { API_BASE_URL } from '../config';
@@ -161,7 +162,7 @@ export default function LoginForm({ switchTo }) {
       try {
         const decoded = jwtDecode(token);
         if (decoded.paymentPlan && decoded.paymentExpiryDate) {
-          const expiry = new Date(decoded.paymentExpiryDate);
+          const expiry = parseDate(decoded.paymentExpiryDate);
           const now = new Date();
           // Check if plan exists and is not expired
           if (!isNaN(expiry.getTime()) && expiry > now) {

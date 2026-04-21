@@ -21,6 +21,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import Toast from 'react-native-toast-message';
 
 import { useAuth } from '../context/AuthContext';
+import { parseDate } from '../utils/dateUtils';
 import { jwtDecode } from 'jwt-decode';
 import { DELETE_USER, GET_ME, VERIFY_RECEIPT_MUTATION, REFRESH_TOKEN } from '../graphql/mutations'; // Imported GET_ME, VERIFY_RECEIPT_MUTATION, and REFRESH_TOKEN
 import { client } from '../apollo/client';
@@ -247,49 +248,6 @@ const ProfileScreen = () => {
   });
 
   const [refreshing, setRefreshing] = useState(false);
-
-  // Robust date parsing helper
-  const parseDate = (dateStr) => {
-    if (!dateStr) return new Date(NaN);
-
-    // Try standard parsing first
-    let date = new Date(dateStr);
-    if (!isNaN(date.getTime())) return date;
-
-    try {
-      // Handle "MM/DD/YYYY HH:MM:SS AM/PM [Offset]"
-      // Example: "12/27/2025 5:50:04 AM +00:00"
-      const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})\s+(AM|PM)\s+([+-]\d{2}:\d{2}|Z)?/i);
-
-      if (match) {
-        let [_, m, d, y, h, min, s, ampm, offset] = match;
-        m = parseInt(m, 10);
-        d = parseInt(d, 10);
-        y = parseInt(y, 10);
-        h = parseInt(h, 10);
-        min = parseInt(min, 10);
-        s = parseInt(s, 10);
-
-        if (ampm.toUpperCase() === 'PM' && h < 12) h += 12;
-        if (ampm.toUpperCase() === 'AM' && h === 12) h = 0;
-
-        // Construct ISO string: YYYY-MM-DDTHH:MM:SS
-        const isoBase = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-
-        if (offset) {
-          if (offset.toUpperCase() === 'Z') offset = '+00:00';
-          date = new Date(isoBase + offset);
-        } else {
-          // Fallback to local time
-          date = new Date(y, m - 1, d, h, min, s);
-        }
-        return date;
-      }
-    } catch (e) {
-      console.warn('parseDate regex failed:', e);
-    }
-    return new Date(NaN);
-  };
 
   // Load from token on mount to avoid waiting for GET_ME
   useEffect(() => {
