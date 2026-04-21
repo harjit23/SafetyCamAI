@@ -175,36 +175,18 @@ const ProfileScreen = () => {
         variables: { receipt },
       });
 
-      if (data?.verifyApplePayment === true) {
+      if (data?.verifyApplePayment === true || data?.verifyApplePayment?.status === 'success' || data?.verifyApplePayment?.success === true) {
         console.log('✅ Restore successful!');
 
-        // Refresh token to get updated claims
-        try {
-          const token = await AsyncStorage.getItem('accessToken');
-          const refreshToken = await AsyncStorage.getItem('refreshToken');
-          if (token && refreshToken) {
-            console.log('🔄 Refreshing token after restore...');
-            const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
-            if (refreshData?.refreshToken) {
-              await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
-              await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
-              console.log('✅ Token refreshed after restore');
-            }
-          }
-        } catch (refreshErr) {
-          console.warn('Failed to refresh token after restore:', refreshErr);
-        }
-
-        // Update global user state
-        await refreshUser();
+        // Use centralized refresh to update token and state
+        await performTokenRefresh();
+        await refreshUser(true);
 
         Toast.show({
           type: 'success',
           text1: 'Restore Successful',
           text2: 'Your premium access has been restored.',
         });
-        // Refetch user data to update UI
-        refetch();
       } else {
         console.warn('❌ Backend rejected the restored receipt');
         Toast.show({
@@ -213,6 +195,7 @@ const ProfileScreen = () => {
           text2: 'We found a purchase, but verification failed.',
         });
       }
+
       await RNIap.endConnection();
     } catch (err) {
       console.warn('❌ Restore error:', err);

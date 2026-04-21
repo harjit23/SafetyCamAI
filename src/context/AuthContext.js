@@ -178,6 +178,11 @@ export const AuthProvider = ({ children }) => {
 
         if (fromBackend) {
           console.log('[AuthContext] 🔄 Refreshing user data from backend...');
+
+          // 1) First, try to refresh the token so claims match
+          await performTokenRefresh();
+
+          // 2) Then fetch fresh data from GET_ME
           try {
             const { data } = await client.query({
               query: GET_ME,

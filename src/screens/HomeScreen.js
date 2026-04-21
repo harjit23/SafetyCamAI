@@ -505,9 +505,10 @@ export default function HomeScreen() {
 
           {(!image || state === 'upload') && <UploadBox onUpload={handleImageSelect} />}
 
-          {remainingAttempts !== null && !user?.paymentPlan?.toLowerCase().includes('enterprise') && (
+          {remainingAttempts !== null && (
             <Text style={styles.attemptsText}>Remaining Attempts: {remainingAttempts}</Text>
           )}
+
 
 
           {state === 'verifying' && (

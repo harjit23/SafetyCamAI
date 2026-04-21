@@ -246,23 +246,15 @@ export default function SubscriptionScreen() {
 
             const { data } = await verifyReceipt({ variables: { receipt } });
 
-            if (data?.verifyApplePayment === true) {
-                try {
-                    const token = await AsyncStorage.getItem('accessToken');
-                    const refreshToken = await AsyncStorage.getItem('refreshToken');
-                    if (token && refreshToken) {
-                        const { data: refreshData } = await refreshTokenMutation({ variables: { token, refreshToken } });
-                        if (refreshData?.refreshToken) {
-                            await AsyncStorage.setItem('accessToken', refreshData.refreshToken.token);
-                            await AsyncStorage.setItem('refreshToken', refreshData.refreshToken.refreshToken);
-                        }
-                    }
-                } catch (refreshErr) { }
+            if (data?.verifyApplePayment === true || data?.verifyApplePayment?.status === 'success' || data?.verifyApplePayment?.success === true) {
+                // Use centralized refresh to update token and state
+                await performTokenRefresh();
+                await refreshUser(true);
 
-                await refreshUser();
                 Toast.show({ type: 'success', text1: 'Restore Successful', text2: 'Your premium access has been restored.' });
                 setTimeout(() => navigation.navigate('Home'), 1500);
             } else {
+
                 Toast.show({ type: 'error', text1: 'Restore Failed', text2: 'Verification failed.' });
             }
         } catch (err) {
