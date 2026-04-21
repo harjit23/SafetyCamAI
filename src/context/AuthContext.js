@@ -4,7 +4,6 @@ import { jwtDecode } from 'jwt-decode';
 import { AppState } from 'react-native';
 
 import authEvents, { AUTH_EVENTS } from '../utils/authEvents';
-import { parseDate } from '../utils/dateUtils';
 import { client } from '../apollo/client';
 import { GET_ME, REFRESH_TOKEN } from '../graphql/mutations';
 
@@ -15,87 +14,72 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const appState = useRef(AppState.currentState);
 
-  // Restore session from AsyncStorage on app start
+  // ────────────────────────────────────────────────
+  // SESSION RESTORE on app cold start
+  // ────────────────────────────────────────────────
   useEffect(() => {
-    const checkTokenExpiry = async () => {
-      try {
-        const accessToken = await AsyncStorage.getItem('accessToken');
-        if (accessToken) {
-          const decoded = jwtDecode(accessToken);
-          const currentTime = Date.now() / 1000;
-          if (decoded.exp && decoded.exp < currentTime) {
-            console.log('[AuthContext] Session expired (foreground check), logging out');
-            await logout();
-            return true; // Expired
-          }
-        }
-      } catch (e) {
-        console.log('[AuthContext] Token check failed:', e);
-      }
-      return false; // Not expired or no token
-    };
-
     const restoreSession = async () => {
       try {
         const accessToken = await AsyncStorage.getItem('accessToken');
+
+        if (!accessToken) {
+          console.log('[AuthContext] No saved session found');
+          return;
+        }
+
+        // Check if token is expired
+        try {
+          const decoded = jwtDecode(accessToken);
+          const currentTime = Date.now() / 1000;
+          if (decoded.exp && decoded.exp < currentTime) {
+            console.log('[AuthContext] Session expired, logging out');
+            await logout();
+            return;
+          }
+        } catch (e) {
+          console.log('[AuthContext] Token decode failed during restore:', e);
+        }
+
+        // Load cached user immediately so UI is not blank while fetching
         const savedUserData = await AsyncStorage.getItem('userData');
-
-        if (accessToken) {
-          // Check if token is expired
-          const isExpired = await checkTokenExpiry();
-          if (isExpired) return;
-
-          // Clear any stale redirect flags when session is restored
-          // This prevents unwanted redirects from previous sessions
-          await AsyncStorage.removeItem('redirectToSubscription');
-
-          // If we have a saved user data, use it
-          if (savedUserData) {
-            try {
-              const parsedUser = JSON.parse(savedUserData);
-              setUser(parsedUser);
-              console.log('[AuthContext] Session restored from storage');
-            } catch (parseError) {
-              console.log('[AuthContext] Failed to parse saved user data:', parseError);
-              // Even if parsing fails, we have a token so user is logged in
-              // Set a minimal user object
-              setUser({ isLoggedIn: true });
-            }
-          } else {
-            // We have token but no user data - user is still logged in
+        if (savedUserData) {
+          try {
+            setUser(JSON.parse(savedUserData));
+            console.log('[AuthContext] Session restored from cache');
+          } catch (e) {
             setUser({ isLoggedIn: true });
-            console.log('[AuthContext] Token found, user restored');
           }
         } else {
-          console.log('[AuthContext] No saved session found');
+          setUser({ isLoggedIn: true });
         }
+
+        // Clear stale redirect flags
+        await AsyncStorage.removeItem('redirectToSubscription');
+
+        // Immediately sync with backend in the background
+        // This ensures the latest subscription status is always displayed
+        refreshUser(true);
       } catch (error) {
         console.log('[AuthContext] Error restoring session:', error);
       } finally {
         setIsLoading(false);
-        // Refresh from backend after session is restored to ensure latest subscription status
-        refreshUser(true);
       }
     };
 
     restoreSession();
 
-    // Listen for global logout events (e.g. from Apollo Client on 401)
+    // Global logout listener (on 401 from Apollo)
     const logoutListener = () => {
       console.log('[AuthContext] Global logout event received');
       logout();
     };
-
     authEvents.on(AUTH_EVENTS.LOGOUT, logoutListener);
 
-    // AppState listener to check token when coming to foreground
+    // Check token when app comes back to foreground
     const subscription = AppState.addEventListener('change', nextAppState => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        console.log('[AuthContext] App came to foreground, checking token...');
-        checkTokenExpiry();
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('[AuthContext] App foregrounded, syncing with backend...');
+        refreshUser(true);
       }
       appState.current = nextAppState;
     });
@@ -106,9 +90,11 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  // ────────────────────────────────────────────────
+  // LOGIN – called after successful auth
+  // ────────────────────────────────────────────────
   const login = async (userData) => {
     setUser(userData);
-    // Save user data to AsyncStorage for persistence
     try {
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       console.log('[AuthContext] User data saved to storage');
@@ -117,9 +103,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-
-  // ...
-
+  // ────────────────────────────────────────────────
+  // LOGOUT
+  // ────────────────────────────────────────────────
   const logout = async () => {
     try {
       await AsyncStorage.multiRemove([
@@ -129,29 +115,31 @@ export const AuthProvider = ({ children }) => {
         'apiKey',
         'userData',
         'currentUserId',
-        'redirectToSubscription'
+        'redirectToSubscription',
       ]);
-
-
       setUser(null);
       console.log('[AuthContext] Logged out and cleared storage');
     } catch (error) {
-      console.log('[AuthContext] Error during logout storage clearing:', error);
-      // Still set user to null to update UI
+      console.log('[AuthContext] Error during logout:', error);
       setUser(null);
     }
   };
 
+  // ────────────────────────────────────────────────
+  // SILENT TOKEN REFRESH
+  // Refreshes the JWT using the stored refresh token.
+  // Returns the new access token on success, or null on failure.
+  // ────────────────────────────────────────────────
   const performTokenRefresh = async () => {
     try {
       const accessToken = await AsyncStorage.getItem('accessToken');
       const refreshTokenValue = await AsyncStorage.getItem('refreshToken');
       if (!accessToken || !refreshTokenValue) {
-        console.log('[AuthContext] ⚠️ Cannot refresh: missing accessToken or refreshToken');
+        console.log('[AuthContext] ⚠️ Cannot refresh token: missing tokens');
         return null;
       }
 
-      console.log('[AuthContext] 🔄 Attempting silent token refresh...');
+      console.log('[AuthContext] 🔄 Refreshing JWT token...');
       const { data } = await client.mutate({
         mutation: REFRESH_TOKEN,
         variables: { token: accessToken, refreshToken: refreshTokenValue },
@@ -163,7 +151,7 @@ export const AuthProvider = ({ children }) => {
         if (data?.refreshToken?.refreshToken) {
           await AsyncStorage.setItem('refreshToken', data.refreshToken.refreshToken);
         }
-        console.log('[AuthContext] ✅ Token refreshed successfully');
+        console.log('[AuthContext] ✅ JWT token refreshed');
         return newToken;
       }
     } catch (e) {
@@ -172,25 +160,27 @@ export const AuthProvider = ({ children }) => {
     return null;
   };
 
+  // ────────────────────────────────────────────────
+  // REFRESH USER STATE
+  //
+  // fromBackend = true  → BACKEND IS THE SOURCE OF TRUTH
+  //   1. Call GET_ME with current token to get latest subscription state
+  //   2. Update user state with backend response (paymentPlan, paymentExpiryDate, etc.)
+  //   3. THEN refresh the token (non-blocking, best effort)
+  //
+  // fromBackend = false → local only (token/cache), used for quick restores
+  // ────────────────────────────────────────────────
   const refreshUser = async (fromBackend = false) => {
     try {
-      // Read token initially
-      let accessToken = await AsyncStorage.getItem('accessToken');
+      const accessToken = await AsyncStorage.getItem('accessToken');
       if (!accessToken) return;
 
-      let updatedUser = null;
-
       if (fromBackend) {
-        console.log('[AuthContext] 🔄 Refreshing user data from backend...');
-
-        // 1) Refresh the JWT token first and use the NEW token for GET_ME
-        const newToken = await performTokenRefresh();
-        if (newToken) {
-          accessToken = newToken; // Use fresh token for subsequent calls
-          console.log('[AuthContext] ✅ Using fresh token for GET_ME');
-        }
-
-        // 2) Fetch fresh user data with the latest token
+        // ── STEP 1: Fetch fresh data from backend ────────────────────────
+        // The backend has the most accurate subscription state.
+        // We do NOT defer this behind a token refresh — we want fresh data NOW.
+        console.log('[AuthContext] 🔄 Syncing user state from backend (GET_ME)...');
+        let backendUser = null;
         try {
           const { data } = await client.query({
             query: GET_ME,
@@ -199,46 +189,71 @@ export const AuthProvider = ({ children }) => {
           });
 
           if (data?.me) {
-            updatedUser = { ...data.me };
-            console.log('[AuthContext] ✅ Fresh data from backend. Plan:', updatedUser.paymentPlan);
+            backendUser = { ...data.me };
+            console.log('[AuthContext] ✅ Backend sync success. Plan:', backendUser.paymentPlan);
+            console.log('[AuthContext] 📋 Backend paymentExpiryDate:', backendUser.paymentExpiryDate);
           }
         } catch (backendError) {
-          console.log('[AuthContext] ❌ Backend refresh failed, falling back to token:', backendError.message);
+          console.log('[AuthContext] ❌ GET_ME failed:', backendError.message);
         }
+
+        if (backendUser) {
+          // Backend responded — use it as the SOLE source of truth for subscription data.
+          // Do NOT merge with stale token claims for payment fields.
+          const updatedUser = {
+            ...backendUser,
+            // Ensure these key subscription fields come exclusively from the backend:
+            paymentPlan: backendUser.paymentPlan,
+            paymentExpiryDate: backendUser.paymentExpiryDate,
+            pendingLookups: backendUser.pendingLookups,
+          };
+
+          console.log('[AuthContext] 🔄 Setting user state from backend. Final plan:', updatedUser.paymentPlan);
+          setUser(prev => ({ ...prev, ...updatedUser }));
+          await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
+
+          // ── STEP 2: THEN refresh the JWT token (non-blocking, best effort) ─
+          // We do this AFTER updating UI so the user doesn't wait for token refresh.
+          performTokenRefresh().catch(e => {
+            console.log('[AuthContext] Background token refresh failed:', e.message);
+          });
+
+          return; // Done — backend was our source of truth
+        }
+        // If backend failed, fall through to token-based refresh as fallback
+        console.log('[AuthContext] ⚠️ Backend unavailable, falling back to cached token data');
       }
 
-      // Build final user state from token claims + backend data
+      // ── FALLBACK: Build user state from cached token + saved data ─────────
       try {
         const savedUserData = await AsyncStorage.getItem('userData');
         const decoded = jwtDecode(accessToken);
 
-        let baseUser = updatedUser || {};
-        if (!updatedUser && savedUserData) {
+        let baseUser = {};
+        if (savedUserData) {
           try { baseUser = JSON.parse(savedUserData); } catch (e) { }
         }
 
-        const mergedUser = {
+        const fallbackUser = {
           ...baseUser,
-          paymentPlan: updatedUser?.paymentPlan || decoded.paymentPlan,
-          paymentExpiryDate: updatedUser?.paymentExpiryDate || decoded.paymentExpiryDate,
-          pendingLookups: updatedUser?.pendingLookups !== undefined ? updatedUser.pendingLookups : decoded.pendingLookups,
+          paymentPlan: baseUser.paymentPlan || decoded.paymentPlan,
+          paymentExpiryDate: baseUser.paymentExpiryDate || decoded.paymentExpiryDate,
+          pendingLookups: baseUser.pendingLookups !== undefined ? baseUser.pendingLookups : decoded.pendingLookups,
         };
 
-        console.log('[AuthContext] 🔄 Final user state set. Plan:', mergedUser.paymentPlan);
-
-        setUser({ ...mergedUser });
-        await AsyncStorage.setItem('userData', JSON.stringify(mergedUser));
+        console.log('[AuthContext] 🔄 User state set from cache/token. Plan:', fallbackUser.paymentPlan);
+        setUser({ ...fallbackUser });
+        await AsyncStorage.setItem('userData', JSON.stringify(fallbackUser));
       } catch (e) {
-        console.log('[AuthContext] Failed to build user state:', e);
+        console.log('[AuthContext] Failed to build fallback user state:', e);
       }
     } catch (error) {
-      console.log('[AuthContext] Error refreshing user:', error);
+      console.log('[AuthContext] Error in refreshUser:', error);
     }
   };
 
   return (
     <AuthContext.Provider value={{ user, login, logout, refreshUser, performTokenRefresh, setUser: login, isLoading }}>
-
       {children}
     </AuthContext.Provider>
   );

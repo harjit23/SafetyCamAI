@@ -39,18 +39,24 @@ const ProfileScreen = () => {
   const [refreshTokenMutation] = useMutation(REFRESH_TOKEN);
   const itemSkus = ['com.safetycamai.monthly'];
 
-  // Sync local state with Context User when it changes (e.g. after refreshUser)
+  // ── SOURCE OF TRUTH: Backend data via AuthContext ─────────────────────────
+  // When `user` changes in AuthContext (after refreshUser(true) fetches from backend),
+  // we sync ALL fields into local profile state. Payment fields come ONLY from here.
   useEffect(() => {
     if (user) {
-      console.log('👤 Syncing Profile with Context User:', user);
+      console.log('[ProfileScreen] 🔄 Syncing from AuthContext. Plan:', user.paymentPlan);
       setUserProfile(prev => ({
         ...prev,
-        ...user,
-        // FORCE overwrite payment info from context (token) as it's the source of truth for access
+        // Identity fields
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+        id: user.id || prev.id,
+        linked_accounts: user.linked_accounts || prev.linked_accounts,
+        // ── Subscription fields from backend (DO NOT override from JWT token) ──
         paymentPlan: user.paymentPlan,
+        paymentDate: user.paymentDate,
         paymentExpiryDate: user.paymentExpiryDate,
-        // Only use pendingLookups if it exists in token, otherwise keep existing (or from GET_ME)
-        pendingLookups: user.pendingLookups !== undefined ? user.pendingLookups : prev.pendingLookups
+        pendingLookups: user.pendingLookups !== undefined ? user.pendingLookups : prev.pendingLookups,
       }));
     }
   }, [user]);
@@ -177,10 +183,12 @@ const ProfileScreen = () => {
       });
 
       if (data?.verifyApplePayment === true || data?.verifyApplePayment?.status === 'success' || data?.verifyApplePayment?.success === true) {
-        console.log('✅ Restore successful!');
+        console.log('✅ Restore successful! Fetching latest state from backend...');
 
-        // Use centralized refresh to update token and state
-        await performTokenRefresh();
+        // CORRECT ORDER:
+        // 1. Receipt verified → backend has updated subscription in DB
+        // 2. Fetch latest state from backend (GET_ME) as source of truth
+        // 3. Token refresh happens automatically inside refreshUser(true) AFTER GET_ME
         await refreshUser(true);
 
         Toast.show({
@@ -219,119 +227,16 @@ const ProfileScreen = () => {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load from token on mount to avoid waiting for GET_ME
+  // Load basic identity (name/email/id) from token ONLY to avoid a blank screen
+  // while GET_ME loads. Payment fields intentionally excluded — they come from
+  // AuthContext (refreshUser → GET_ME) which fires on mount.
   useEffect(() => {
-    const loadFromToken = async () => {
+    const loadIdentityFromToken = async () => {
       try {
         const token = await AsyncStorage.getItem('accessToken');
         if (token) {
           const decoded = jwtDecode(token);
-          console.log('🎫 RAW ACCESS TOKEN:', token);
-          console.log('🔑 FULL DECODED TOKEN (Initial Load):', JSON.stringify(decoded, null, 2));
-
-          if (decoded.linked_accounts) {
-            try {
-              const parsed = typeof decoded.linked_accounts === 'string' ? JSON.parse(decoded.linked_accounts) : decoded.linked_accounts;
-              console.log('🔗 DECODED LINKED ACCOUNTS:', JSON.stringify(parsed, null, 2));
-            } catch (e) {
-              console.log('🔗 LINKED ACCOUNTS (Raw):', decoded.linked_accounts);
-            }
-          }
-
-          const refreshToken = await AsyncStorage.getItem('refreshToken');
-          if (refreshToken) {
-            console.log('🎫 RAW REFRESH TOKEN:', refreshToken);
-            try {
-              const decodedRefresh = jwtDecode(refreshToken);
-              console.log('🔑 DECODED REFRESH TOKEN:', JSON.stringify(decodedRefresh, null, 2));
-            } catch (e) {
-              console.log('❌ Failed to decode refresh token');
-            }
-          }
-
-          console.log('👤 Initial load from token:', decoded);
-          setUserProfile({
-            name: decoded.name || decoded.unique_name || decoded.given_name || 'User',
-            email: decoded.email || decoded.upn || 'No Email',
-            id: decoded.id || decoded.sub,
-            linked_accounts: decoded.linked_accounts,
-            paymentPlan: decoded.paymentPlan,
-            paymentDate: decoded.paymentDate,
-            paymentExpiryDate: decoded.paymentExpiryDate,
-          });
-
-        }
-      } catch (e) {
-        console.error('Initial token decode failed', e);
-      }
-    };
-    loadFromToken();
-  }, []);
-
-  // Fetch user details: Try GET_ME first, fallback to Token Decode
-  const { data: userData, loading, error, refetch } = useQuery(GET_ME, {
-    fetchPolicy: 'network-only',
-    onCompleted: async (data) => {
-      console.log('👤 GET_ME Query Response:', JSON.stringify(data, null, 2));
-      if (data?.me) {
-        console.log('👤 User Profile Data:', data.me);
-        console.log('👤 Linked Accounts:', data.me.linked_accounts);
-
-        // 🔍 Log remaining attempts and plan type (Safe logging)
-        try {
-          console.log('--- 🛡️ MFA/2FA Status Check ---');
-          console.log('User ID:', data.me.id);
-          console.log('Email:', data.me.email);
-          // Check for common MFA field names in case they exist in the response
-          console.log('MFA Enabled (potential field):', data.me.isMfaEnabled || data.me.mfaEnabled || data.me.isTwoFactorEnabled || data.me.twoFactorEnabled || 'Field not found in response');
-          console.log('-------------------------------');
-
-          const token = await AsyncStorage.getItem('accessToken');
-          if (token) {
-            const decoded = jwtDecode(token);
-            const expiry = parseDate(decoded.paymentExpiryDate);
-            const now = new Date();
-            const isExpired = isNaN(expiry.getTime()) || now > expiry;
-
-            console.log('--- 📊 Plan Status Calculation [ProfileScreen] ---');
-            console.log('Plan:', decoded.paymentPlan);
-            console.log('Raw Expiry Date:', decoded.paymentExpiryDate);
-            console.log('Parsed Expiry Date:', isNaN(expiry.getTime()) ? 'Invalid Date' : expiry.toLocaleString());
-            console.log('Current Date:', now.toLocaleString());
-            console.log('Is Expired:', isExpired);
-            console.log('Remaining Attempts (from backend):', data.me.pendingLookups);
-            console.log('-----------------------------------------------');
-          } else {
-            console.log(`📊 [ProfileScreen] Plan: Guest | Remaining Attempts: ${data.me.pendingLookups}`);
-          }
-        } catch (logError) {
-          console.warn('Failed to log payment status from token:', logError);
-        }
-
-        // Only update non-payment profile fields from GET_ME response.
-        // Payment fields (paymentPlan, paymentExpiryDate) are managed by the
-        // useEffect([user]) sync which reads from the AuthContext. This avoids
-        // stale token data from overwriting the freshly restored subscription status.
-        setUserProfile(prev => ({
-          ...prev,
-          name: data.me.name || prev.name,
-          email: data.me.email || prev.email,
-          id: data.me.id || prev.id,
-          linked_accounts: data.me.linked_accounts || prev.linked_accounts,
-          pendingLookups: data.me.pendingLookups !== undefined ? data.me.pendingLookups : prev.pendingLookups,
-        }));
-        console.log(`📊 [ProfileScreen] GET_ME completed. Plan from context: ${user?.paymentPlan || 'Free'}`);
-      }
-
-    },
-    onError: async (err) => {
-      console.log('GET_ME failed, trying token decode', err);
-      // Fallback: Decode token for non-payment fields only.
-      // Payment fields are managed by useEffect([user]) from AuthContext.
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (token) {
-          const decoded = jwtDecode(token);
+          // ONLY seed non-payment fields to prevent stale plan from showing
           setUserProfile(prev => ({
             ...prev,
             name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
@@ -341,9 +246,51 @@ const ProfileScreen = () => {
           }));
         }
       } catch (e) {
-        console.error('Token decode failed', e);
+        console.error('[ProfileScreen] Initial token decode failed', e);
       }
-    }
+    };
+    loadIdentityFromToken();
+  }, []);
+
+  // ── FETCH USER DETAILS FROM BACKEND ──────────────────────────────────────
+  // We use this to get identity and pending lookups.
+  // Subscription status is managed by AuthContext/refreshUser(true).
+  const { data: userData, loading, error, refetch } = useQuery(GET_ME, {
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      if (data?.me) {
+        console.log('[ProfileScreen] ✅ GET_ME sync success');
+        setUserProfile(prev => ({
+          ...prev,
+          name: data.me.name || prev.name,
+          email: data.me.email || prev.email,
+          id: data.me.id || prev.id,
+          linked_accounts: data.me.linked_accounts || prev.linked_accounts,
+          pendingLookups: data.me.pendingLookups !== undefined ? data.me.pendingLookups : prev.pendingLookups,
+        }));
+      }
+    },
+    onError: (err) => {
+      console.log('[ProfileScreen] GET_ME query failed:', err.message);
+      // Fallback: update identity from token if query fails
+      const loadIdentity = async () => {
+        try {
+          const token = await AsyncStorage.getItem('accessToken');
+          if (token) {
+            const decoded = jwtDecode(token);
+            setUserProfile(prev => ({
+              ...prev,
+              name: decoded.name || decoded.unique_name || decoded.given_name || prev.name,
+              email: decoded.email || decoded.upn || prev.email,
+              id: decoded.id || decoded.sub || prev.id,
+            }));
+          }
+        } catch (e) {
+          console.error('[ProfileScreen] Fallback identity load failed:', e);
+        }
+      };
+      loadIdentity();
+    },
   });
 
 
