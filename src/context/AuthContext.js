@@ -156,10 +156,11 @@ export const AuthProvider = ({ children }) => {
       if (data?.refreshToken?.token) {
         const newToken = data.refreshToken.token;
         await AsyncStorage.setItem('accessToken', newToken);
+        if (data?.refreshToken?.refreshToken) {
+          await AsyncStorage.setItem('refreshToken', data.refreshToken.refreshToken);
+        }
         console.log('[AuthContext] ✅ Token refreshed successfully');
-
-        // After refreshing token, we should also refresh the user state to get new claims
-        await refreshUser(false);
+        // NOTE: Do NOT call refreshUser here to avoid circular calls
         return newToken;
       }
     } catch (e) {
@@ -170,63 +171,62 @@ export const AuthProvider = ({ children }) => {
 
   const refreshUser = async (fromBackend = false) => {
     try {
-      const accessToken = await AsyncStorage.getItem('accessToken');
-      const savedUserData = await AsyncStorage.getItem('userData');
+      // Read token initially
+      let accessToken = await AsyncStorage.getItem('accessToken');
+      if (!accessToken) return;
 
-      if (accessToken) {
-        let updatedUser = null;
+      let updatedUser = null;
 
-        if (fromBackend) {
-          console.log('[AuthContext] 🔄 Refreshing user data from backend...');
+      if (fromBackend) {
+        console.log('[AuthContext] 🔄 Refreshing user data from backend...');
 
-          // 1) First, try to refresh the token so claims match
-          await performTokenRefresh();
-
-          // 2) Then fetch fresh data from GET_ME
-          try {
-            const { data } = await client.query({
-              query: GET_ME,
-              fetchPolicy: 'network-only',
-              context: { headers: { authorization: `Bearer ${accessToken}` } },
-            });
-
-            if (data?.me) {
-              updatedUser = { ...data.me };
-              console.log('[AuthContext] ✅ Fresh data from backend. Plan:', updatedUser.paymentPlan);
-            }
-          } catch (backendError) {
-            console.log('[AuthContext] ❌ Backend refresh failed, falling back to token:', backendError.message);
-          }
+        // 1) Refresh the JWT token first and use the NEW token for GET_ME
+        const newToken = await performTokenRefresh();
+        if (newToken) {
+          accessToken = newToken; // Use fresh token for subsequent calls
+          console.log('[AuthContext] ✅ Using fresh token for GET_ME');
         }
 
-        // Fallback or secondary refresh from token claims
+        // 2) Fetch fresh user data with the latest token
         try {
-          const decoded = jwtDecode(accessToken);
+          const { data } = await client.query({
+            query: GET_ME,
+            fetchPolicy: 'network-only',
+            context: { headers: { authorization: `Bearer ${accessToken}` } },
+          });
 
-          // Merge logic: prefer backend data if we got it, else use token claims
-          let finalUser = updatedUser || {};
-
-          if (!updatedUser && savedUserData) {
-            try {
-              finalUser = JSON.parse(savedUserData);
-            } catch (e) { }
+          if (data?.me) {
+            updatedUser = { ...data.me };
+            console.log('[AuthContext] ✅ Fresh data from backend. Plan:', updatedUser.paymentPlan);
           }
-
-          // Ensure payment fields are current from token if backend didn't provide them
-          const mergedUser = {
-            ...finalUser,
-            paymentPlan: updatedUser?.paymentPlan || decoded.paymentPlan,
-            paymentExpiryDate: updatedUser?.paymentExpiryDate || decoded.paymentExpiryDate,
-            pendingLookups: updatedUser?.pendingLookups !== undefined ? updatedUser.pendingLookups : decoded.pendingLookups
-          };
-
-          console.log('[AuthContext] 🔄 Final user state set. Plan:', mergedUser.paymentPlan);
-
-          setUser({ ...mergedUser });
-          await AsyncStorage.setItem('userData', JSON.stringify(mergedUser));
-        } catch (e) {
-          console.log('[AuthContext] Failed to decode token during refresh:', e);
+        } catch (backendError) {
+          console.log('[AuthContext] ❌ Backend refresh failed, falling back to token:', backendError.message);
         }
+      }
+
+      // Build final user state from token claims + backend data
+      try {
+        const savedUserData = await AsyncStorage.getItem('userData');
+        const decoded = jwtDecode(accessToken);
+
+        let baseUser = updatedUser || {};
+        if (!updatedUser && savedUserData) {
+          try { baseUser = JSON.parse(savedUserData); } catch (e) { }
+        }
+
+        const mergedUser = {
+          ...baseUser,
+          paymentPlan: updatedUser?.paymentPlan || decoded.paymentPlan,
+          paymentExpiryDate: updatedUser?.paymentExpiryDate || decoded.paymentExpiryDate,
+          pendingLookups: updatedUser?.pendingLookups !== undefined ? updatedUser.pendingLookups : decoded.pendingLookups,
+        };
+
+        console.log('[AuthContext] 🔄 Final user state set. Plan:', mergedUser.paymentPlan);
+
+        setUser({ ...mergedUser });
+        await AsyncStorage.setItem('userData', JSON.stringify(mergedUser));
+      } catch (e) {
+        console.log('[AuthContext] Failed to build user state:', e);
       }
     } catch (error) {
       console.log('[AuthContext] Error refreshing user:', error);

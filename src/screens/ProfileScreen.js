@@ -308,46 +308,21 @@ const ProfileScreen = () => {
           console.warn('Failed to log payment status from token:', logError);
         }
 
-        // Get payment info from AuthContext (most up-to-date, updated after restore)
-        // Fallback to token decode only if AuthContext user is not yet updated
-        let paymentInfo = {};
-        try {
-          if (user?.paymentPlan) {
-            // Best case: AuthContext already has fresh data from backend refresh
-            paymentInfo = {
-              paymentPlan: user.paymentPlan,
-              paymentDate: user.paymentDate,
-              paymentExpiryDate: user.paymentExpiryDate,
-            };
-            console.log('👤 Payment info from AuthContext:', paymentInfo);
-          } else {
-            // Fallback: decode from token
-            const token = await AsyncStorage.getItem('accessToken');
-            if (token) {
-              const decoded = jwtDecode(token);
-              paymentInfo = {
-                paymentPlan: decoded.paymentPlan,
-                paymentDate: decoded.paymentDate,
-                paymentExpiryDate: decoded.paymentExpiryDate,
-              };
-              console.log('👤 Payment info from token (fallback):', paymentInfo);
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to get payment info:', e);
-        }
-
-        // Merge GET_ME data with payment info
-        setUserProfile(prev => {
-          const updated = {
-            ...prev,
-            ...data.me, // Base data from DB
-            ...paymentInfo, // Overwrite with fresh payment info
-          };
-          console.log(`📊 [ProfileScreen] Plan: ${updated.paymentPlan || 'Free'} | Remaining Attempts: ${updated.pendingLookups ?? 'N/A'}`);
-          return updated;
-        });
+        // Only update non-payment profile fields from GET_ME response.
+        // Payment fields (paymentPlan, paymentExpiryDate) are managed by the
+        // useEffect([user]) sync which reads from the AuthContext. This avoids
+        // stale token data from overwriting the freshly restored subscription status.
+        setUserProfile(prev => ({
+          ...prev,
+          name: data.me.name || prev.name,
+          email: data.me.email || prev.email,
+          id: data.me.id || prev.id,
+          linked_accounts: data.me.linked_accounts || prev.linked_accounts,
+          pendingLookups: data.me.pendingLookups !== undefined ? data.me.pendingLookups : prev.pendingLookups,
+        }));
+        console.log(`📊 [ProfileScreen] GET_ME completed. Plan from context: ${user?.paymentPlan || 'Free'}`);
       }
+
     },
     onError: async (err) => {
       console.log('GET_ME failed, trying token decode', err);
